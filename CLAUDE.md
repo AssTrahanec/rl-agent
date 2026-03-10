@@ -108,13 +108,22 @@ Fallback (нет новостей за день): sentiment = 0.0, embedding = z
 
 ## Уже реализовано
 
-*(пусто — заполняется по мере реализации)*
+- **Slice 1, Task 1.1** — `src/data/price_collector.py`: fetch_ohlcv() через ccxt (Binance spot), тест `tests/test_price_collector.py` (4 unit tests + 1 integration)
+- **Slice 1, Task 1.2** — `src/features/technical.py`: add_technical_indicators() — SMA, EMA, MACD, RSI, Bollinger, ATR, OBV, Stochastic, returns. Тест `tests/test_technical.py` (5 tests)
+- **Slice 1, Task 1.3** — `src/features/normalizer.py`: rolling_zscore_normalize() window=30, NaN→0. Тест `tests/test_normalizer.py` (5 tests)
+- **Slice 1, Task 1.4** — `src/data/build_price_features.py`: CLI pipeline fetch→indicators→normalize→parquet
+- **Slice 2, Task 2.1-2.2** — `src/env/trading_env.py`: Gymnasium TradingEnv (flat obs для SB3, check_env pass). Тест `tests/test_trading_env.py` (7 tests)
+- **Slice 3, Task 3.1** — `src/agents/config.py`: AgentConfig dataclass с PPO гиперпараметрами. Тест `tests/test_config.py` (5 tests)
+- **Slice 3, Task 3.2** — `src/agents/train.py`: train_agent() с PPO/A2C/SAC, smoke test на dummy data. Тест `tests/test_train.py` (2 tests)
+- **Slice 3, Task 3.3** — `src/eval/metrics.py`: compute_metrics() — Sharpe, Sortino, Max Drawdown, Calmar, Total Return. Тест `tests/test_metrics.py` (7 tests)
+- **Slice 3, Task 3.4** — `src/eval/backtest.py`: run_backtest() — прогон модели, equity curve plot. Тест `tests/test_backtest.py` (3 tests)
+- **Slice 3, Task 3.5** — `src/eval/bootstrap.py`: bootstrap_ci() — Bootstrap CI (95%) для Sharpe и Total Return. Тест `tests/test_bootstrap.py` (4 tests)
+- **Инфраструктура**: `venv/` (Python 3.9), `conftest.py`, `pytest.ini` с маркером `integration`
 
 ---
 
 ## Текущий фокус
 
 **Фаза 4: Реализация**
-- Текущая задача: Slice 1, Task 1.1 (OHLCV price collector)
-
-Следующий шаг: открой `prompts/04_implementation.md`.
+- Slices 1-3 завершены (42 теста pass)
+- Следующая задача: Slice 4, Task 4.1 (News Data Pipeline — `src/data/news_collector.py`)
