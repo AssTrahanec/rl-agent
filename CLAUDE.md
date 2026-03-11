@@ -118,12 +118,21 @@ Fallback (нет новостей за день): sentiment = 0.0, embedding = z
 - **Slice 3, Task 3.3** — `src/eval/metrics.py`: compute_metrics() — Sharpe, Sortino, Max Drawdown, Calmar, Total Return. Тест `tests/test_metrics.py` (7 tests)
 - **Slice 3, Task 3.4** — `src/eval/backtest.py`: run_backtest() — прогон модели, equity curve plot. Тест `tests/test_backtest.py` (3 tests)
 - **Slice 3, Task 3.5** — `src/eval/bootstrap.py`: bootstrap_ci() — Bootstrap CI (95%) для Sharpe и Total Return. Тест `tests/test_bootstrap.py` (4 tests)
+- **Slice 4, Task 4.1** — `src/data/news_collector.py`: load_news() из HuggingFace datasets, фильтрация по дате. Тест `tests/test_news_collector.py` (4 tests)
+- **Slice 4, Task 4.2** — `src/data/news_preprocessor.py`: preprocess_news() — дедупликация, группировка по дням. Тест `tests/test_news_preprocessor.py` (5 tests)
+- **Slice 5, Task 5.1** — `src/features/sentiment.py`: compute_sentiment() через FinBERT, fallback 0.0 для пустых текстов. Тест `tests/test_sentiment.py` (2 unit + 2 integration)
+- **Slice 5, Task 5.2** — `src/features/build_sentiment_features.py`: merge daily sentiment с price features. Тест `tests/test_build_sentiment.py` (4 tests)
+- **Slice 5, Task 5.3** — `src/agents/train.py`: расширен для agent_type="sentiment"/"embeddings" с разным числом фичей. Тест `tests/test_train.py` (4 tests)
+- **Slice 6, Task 6.1** — `src/features/embeddings.py`: compute_embeddings() через all-MiniLM-L6-v2, mean pooling. Тест `tests/test_embeddings.py` (2 unit + 3 integration)
+- **Slice 6, Task 6.2** — `src/features/embedding_compressor.py`: EmbeddingCompressor (PCA 384→32), save/load. Тест `tests/test_compressor.py` (4 tests)
+- **Slice 6, Task 6.3** — `src/features/build_embedding_features.py`: merge daily compressed embeddings с price features. Тест `tests/test_build_embedding.py` (4 tests)
 - **Инфраструктура**: `venv/` (Python 3.9), `conftest.py`, `pytest.ini` с маркером `integration`
+- **Зависимости**: datasets, transformers, sentence-transformers установлены
 
 ---
 
 ## Текущий фокус
 
 **Фаза 4: Реализация**
-- Slices 1-3 завершены (42 теста pass)
-- Следующая задача: Slice 4, Task 4.1 (News Data Pipeline — `src/data/news_collector.py`)
+- Slices 1-6 завершены (65 unit tests pass + 4 train tests + integration tests)
+- Следующая задача: Slice 7, Task 7.1 (Ablation study runner — `src/agents/run_ablation.py`)

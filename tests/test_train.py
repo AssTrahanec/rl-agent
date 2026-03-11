@@ -27,3 +27,29 @@ def test_train_returns_path():
         )
         model_path = train_agent(config, dummy=True)
         assert isinstance(model_path, Path)
+
+
+def test_train_sentiment_agent():
+    """Agent-2: train with sentiment features (1 extra feature)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = AgentConfig(
+            total_timesteps=512,
+            save_dir=tmpdir,
+            seed=42,
+            agent_type="sentiment",
+        )
+        model_path = train_agent(config, dummy=True)
+        assert model_path.exists()
+
+
+def test_train_embeddings_agent():
+    """Agent-3: train with embedding features (32 extra features)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = AgentConfig(
+            total_timesteps=512,
+            save_dir=tmpdir,
+            seed=42,
+            agent_type="embeddings",
+        )
+        model_path = train_agent(config, dummy=True)
+        assert model_path.exists()

@@ -23,10 +23,17 @@ ALGO_MAP = {
 }
 
 
+FEATURE_COUNTS = {
+    "baseline": 20,
+    "sentiment": 21,     # baseline + 1 sentiment score
+    "embeddings": 52,    # baseline + 32 compressed embedding dims
+}
+
+
 def _make_dummy_env(config: AgentConfig) -> TradingEnv:
     """Create a small environment with random data for smoke testing."""
     n = 100
-    n_features = 20
+    n_features = FEATURE_COUNTS.get(config.agent_type, 20)
     np.random.seed(config.seed)
     features = np.random.randn(n, n_features).astype(np.float32)
     prices = (100 + np.cumsum(np.random.randn(n) * 0.5)).astype(np.float64)
