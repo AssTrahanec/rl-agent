@@ -14,9 +14,11 @@ def _get_model():
     """Lazy-load the sentence-transformer model."""
     global _model
     if _model is None:
+        import torch
         from sentence_transformers import SentenceTransformer
         logger.info("Loading all-MiniLM-L6-v2 sentence-transformer...")
-        _model = SentenceTransformer("all-MiniLM-L6-v2")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        _model = SentenceTransformer("all-MiniLM-L6-v2", device=device)
     return _model
 
 

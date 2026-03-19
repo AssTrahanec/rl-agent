@@ -10,11 +10,30 @@ from pathlib import Path
 
 import numpy as np
 from stable_baselines3 import PPO, A2C, SAC
+from stable_baselines3.common.callbacks import BaseCallback
 
 from src.agents.config import AgentConfig
+from src.data.load_features import load_features_for_agent
 from src.env.trading_env import TradingEnv
 
 logger = logging.getLogger(__name__)
+
+
+class ProgressCallback(BaseCallback):
+    """Prints training progress every N steps."""
+
+    def __init__(self, total_timesteps: int, print_every: int = 50_000):
+        super().__init__()
+        self.total_timesteps = total_timesteps
+        self.print_every = print_every
+        self._last_print = 0
+
+    def _on_step(self) -> bool:
+        if self.num_timesteps - self._last_print >= self.print_every:
+            pct = 100 * self.num_timesteps / self.total_timesteps
+            print(f"  [{pct:5.1f}%] {self.num_timesteps:>7}/{self.total_timesteps} steps", flush=True)
+            self._last_print = self.num_timesteps
+        return True
 
 ALGO_MAP = {
     "PPO": PPO,
@@ -24,9 +43,10 @@ ALGO_MAP = {
 
 
 FEATURE_COUNTS = {
-    "baseline": 20,
-    "sentiment": 21,     # baseline + 1 sentiment score
-    "embeddings": 52,    # baseline + 32 compressed embedding dims
+    "baseline": 18,
+    "sentiment": 19,     # baseline + 1 sentiment score
+    "embeddings": 50,    # baseline + 32 compressed embedding dims
+    "fusion": 51,        # baseline + 1 sentiment + 32 embeddings (Agent-4)
 }
 
 
@@ -44,12 +64,23 @@ def _make_dummy_env(config: AgentConfig) -> TradingEnv:
     )
 
 
-def train_agent(config: AgentConfig, dummy: bool = False) -> Path:
+def train_agent(
+    config: AgentConfig,
+    dummy: bool = False,
+    train_start: str = "2020-01-01",
+    train_end: str = "2023-12-31",
+    asset: str = "BTC/USDT",
+    data_dir: str = "data/processed",
+) -> Path:
     """Train an RL agent and save the model.
 
     Args:
         config: Agent configuration.
         dummy: If True, use random dummy data instead of loading real features.
+        train_start: Training period start date (used when dummy=False).
+        train_end: Training period end date (used when dummy=False).
+        asset: Asset symbol, e.g. 'BTC/USDT' (used when dummy=False).
+        data_dir: Directory with preprocessed parquet files (used when dummy=False).
 
     Returns:
         Path to saved model .zip file.
@@ -57,7 +88,19 @@ def train_agent(config: AgentConfig, dummy: bool = False) -> Path:
     if dummy:
         env = _make_dummy_env(config)
     else:
-        raise NotImplementedError("Real data loading not yet implemented")
+        features, prices = load_features_for_agent(
+            agent_type=config.agent_type,
+            asset=asset,
+            train_start=train_start,
+            train_end=train_end,
+            data_dir=data_dir,
+        )
+        env = TradingEnv(
+            features=features,
+            prices=prices,
+            window=config.window,
+            tx_cost=config.tx_cost,
+        )
 
     algo_cls = ALGO_MAP[config.algorithm]
 
@@ -75,7 +118,8 @@ def train_agent(config: AgentConfig, dummy: bool = False) -> Path:
         f"Training {config.algorithm} ({config.agent_type}) "
         f"for {config.total_timesteps} steps, seed={config.seed}"
     )
-    model.learn(total_timesteps=config.total_timesteps)
+    callback = ProgressCallback(total_timesteps=config.total_timesteps)
+    model.learn(total_timesteps=config.total_timesteps, callback=callback)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     save_dir = Path(config.save_dir) / config.agent_type / timestamp

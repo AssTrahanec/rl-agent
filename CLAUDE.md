@@ -126,13 +126,23 @@ Fallback (нет новостей за день): sentiment = 0.0, embedding = z
 - **Slice 6, Task 6.1** — `src/features/embeddings.py`: compute_embeddings() через all-MiniLM-L6-v2, mean pooling. Тест `tests/test_embeddings.py` (2 unit + 3 integration)
 - **Slice 6, Task 6.2** — `src/features/embedding_compressor.py`: EmbeddingCompressor (PCA 384→32), save/load. Тест `tests/test_compressor.py` (4 tests)
 - **Slice 6, Task 6.3** — `src/features/build_embedding_features.py`: merge daily compressed embeddings с price features. Тест `tests/test_build_embedding.py` (4 tests)
-- **Инфраструктура**: `venv/` (Python 3.9), `conftest.py`, `pytest.ini` с маркером `integration`
-- **Зависимости**: datasets, transformers, sentence-transformers установлены
+- **Slice 7, Task 7.1** — `src/agents/run_ablation.py`: run_ablation() — запуск всех agent_type × asset × seed комбинаций. Тест `tests/test_run_ablation.py` (3 tests)
+- **Slice 7, Task 7.2** — `src/eval/visualize.py`: plot_equity_curves(), plot_metrics_bar(), plot_metrics_heatmap(). Тест `tests/test_visualize.py` (3 tests)
+- **Slice 7, Task 7.3** — `src/eval/baselines.py`: buy_and_hold() — Buy & Hold baseline метрики. Тест `tests/test_baselines.py` (5 tests)
+- **Slice 8, Task 8.1** — `src/agents/train.py`: A2C и SAC поддержка подтверждена, добавлены smoke tests. Тест `tests/test_train.py` (6 tests)
+- **Slice 8, Task 8.2** — `src/agents/run_algo_comparison.py`: AlgoComparisonConfig + run_algo_comparison() — PPO/A2C/SAC × seeds. Тест `tests/test_run_algo_comparison.py` (3 tests)
+- **Slice 9, Task 9.1** — `src/eval/report.py`: generate_report() — markdown и LaTeX таблицы результатов. Тест `tests/test_report.py` (3 tests)
+- **Slice 10, Task 10.1** — `src/features/finetune_finbert.py`: FinBERTFinetuner (train/predict) + prepare_finetune_dataset(). Тест `tests/test_finetune_finbert.py` (5 tests)
+- **Slice 10, Task 10.2** — `src/features/build_fusion_features.py`: build_fusion_features() (price + sentiment + 32d emb = 53 фичи). `src/agents/train.py` расширен для agent_type="fusion". Тест `tests/test_build_fusion.py` (4 tests) + `tests/test_train.py` (7 tests)
+- **Инфраструктура**: `venv/`, `conftest.py`, `pytest.ini`. Зависимость `accelerate>=1.1.0` добавлена для fine-tuning
 
 ---
 
 ## Текущий фокус
 
-**Фаза 4: Реализация**
-- Slices 1-6 завершены (65 unit tests pass + 4 train tests + integration tests)
-- Следующая задача: Slice 7, Task 7.1 (Ablation study runner — `src/agents/run_ablation.py`)
+**Фаза 5: Эксперименты — ЗАВЕРШЕНА**
+- Все Slices 1-10 завершены (94 unit tests pass + integration tests)
+- Реализованы: 3-way ablation PPO агенты, NLP pipeline (FinBERT + MiniLM), Gymnasium env, метрики, backtest, bootstrap CI, visualizations, report, Buy&Hold baseline, algo comparison (PPO/A2C/SAC), fine-tune FinBERT, Agent-4 fusion
+- **Фаза 5**: `experiments/run_all.py` — обучение 3 агентов × 3 seeds, wandb logging, `results/metrics.csv`
+- **Фаза 5**: `notebooks/results_analysis.ipynb` — таблица метрик (mean±std), barplot Sharpe с error bars, equity curves, t-test + Mann-Whitney, heatmap, figures в `results/figures/`
+- **Фаза 5**: Literature benchmarks собраны (Peng et al. 2023, Soun et al. 2022, Liu et al. 2021, Yang et al. 2020, Wu et al. 2023)

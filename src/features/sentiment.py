@@ -15,11 +15,13 @@ def _get_pipeline():
     if _pipeline is None:
         from transformers import pipeline
         logger.info("Loading ProsusAI/finbert sentiment pipeline...")
+        import torch
+        device = 0 if torch.cuda.is_available() else -1
         _pipeline = pipeline(
             "sentiment-analysis",
             model="ProsusAI/finbert",
             tokenizer="ProsusAI/finbert",
-            device=-1,  # CPU
+            device=device,
         )
     return _pipeline
 

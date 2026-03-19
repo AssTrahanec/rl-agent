@@ -53,3 +53,42 @@ def test_train_embeddings_agent():
         )
         model_path = train_agent(config, dummy=True)
         assert model_path.exists()
+
+
+def test_train_a2c():
+    """Smoke test: train A2C for 512 steps."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = AgentConfig(
+            total_timesteps=512,
+            save_dir=tmpdir,
+            seed=42,
+            algorithm="A2C",
+        )
+        model_path = train_agent(config, dummy=True)
+        assert model_path.exists()
+
+
+def test_train_sac():
+    """Smoke test: train SAC for 512 steps."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = AgentConfig(
+            total_timesteps=512,
+            save_dir=tmpdir,
+            seed=42,
+            algorithm="SAC",
+        )
+        model_path = train_agent(config, dummy=True)
+        assert model_path.exists()
+
+
+def test_train_fusion_agent():
+    """Agent-4: train with fusion features (sentiment + embeddings, 53 features total)."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = AgentConfig(
+            total_timesteps=512,
+            save_dir=tmpdir,
+            seed=42,
+            agent_type="fusion",
+        )
+        model_path = train_agent(config, dummy=True)
+        assert model_path.exists()

@@ -5,6 +5,7 @@ Usage:
     df = load_news("edaschau/bitcoin_news", start="2020-01-01", end="2024-12-31")
 """
 import logging
+from pathlib import Path
 
 import pandas as pd
 
@@ -26,8 +27,8 @@ def load_news(
     end: str,
     split: str = "train",
     title_col: str = "title",
-    text_col: str = "text",
-    date_col: str = "date",
+    text_col: str = "article_text",
+    date_col: str = "date_time",
 ) -> pd.DataFrame:
     """Load and filter news dataset from HuggingFace.
 
@@ -83,5 +84,36 @@ def load_news(
 def save_news(dataset_name: str, start: str, end: str, output_path: str, **kwargs):
     """Load news and save to parquet."""
     df = load_news(dataset_name, start, end, **kwargs)
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(output_path)
     logger.info(f"Saved {len(df)} articles to {output_path}")
+
+
+def main():
+    import argparse
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    parser = argparse.ArgumentParser(description="Download news from HuggingFace and save to parquet")
+    parser.add_argument("--dataset", default="edaschau/bitcoin_news")
+    parser.add_argument("--start", default="2020-01-01")
+    parser.add_argument("--end", default="2024-12-31")
+    parser.add_argument("--output", default="data/raw/bitcoin_news.parquet")
+    parser.add_argument("--title-col", default="title")
+    parser.add_argument("--text-col", default="article_text")
+    parser.add_argument("--date-col", default="date_time")
+    args = parser.parse_args()
+
+    save_news(
+        args.dataset,
+        args.start,
+        args.end,
+        args.output,
+        title_col=args.title_col,
+        text_col=args.text_col,
+        date_col=args.date_col,
+    )
+
+
+if __name__ == "__main__":
+    main()
