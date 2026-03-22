@@ -14,6 +14,17 @@ from src.eval.metrics import compute_metrics
 logger = logging.getLogger(__name__)
 
 
+def load_model(model_path: str):
+    """Load SB3 model, auto-detecting algorithm type (PPO, A2C, or SAC)."""
+    from stable_baselines3 import PPO, A2C, SAC
+    for algo_cls in [PPO, A2C, SAC]:
+        try:
+            return algo_cls.load(model_path, device="cpu")
+        except Exception:
+            continue
+    raise ValueError(f"Cannot load model from {model_path} (tried PPO, A2C, SAC)")
+
+
 def run_backtest(
     features: np.ndarray,
     prices: np.ndarray,
@@ -21,6 +32,7 @@ def run_backtest(
     window: int = 30,
     tx_cost: float = 0.001,
     plot_path: Optional[str] = None,
+    allow_short: bool = False,
 ) -> dict:
     """Run backtest on given data.
 
@@ -31,16 +43,17 @@ def run_backtest(
         window: Observation window size.
         tx_cost: Transaction cost fraction.
         plot_path: If provided, save equity curve plot to this path.
+        allow_short: If True, allow short positions (allocation in [-1, 1]).
+            Must match the setting used during training.
 
     Returns:
         Dict with keys: metrics, daily_returns, allocations, equity_curve.
     """
-    env = TradingEnv(features=features, prices=prices, window=window, tx_cost=tx_cost)
+    env = TradingEnv(features=features, prices=prices, window=window, tx_cost=tx_cost, allow_short=allow_short)
 
     model = None
     if model_path is not None:
-        from stable_baselines3 import PPO
-        model = PPO.load(model_path)
+        model = load_model(model_path)
 
     obs, _ = env.reset()
     daily_returns = []

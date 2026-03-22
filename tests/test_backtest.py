@@ -49,3 +49,14 @@ def test_backtest_save_plot():
             window=30, plot_path=str(plot_path),
         )
         assert plot_path.exists()
+
+
+def test_backtest_allow_short():
+    """Backtest with allow_short passes through to TradingEnv."""
+    np.random.seed(42)
+    features = np.random.randn(100, 5).astype(np.float32)
+    prices = (100 + np.cumsum(np.random.randn(100) * 0.5)).astype(np.float64)
+    prices = np.maximum(prices, 1.0)
+    result = run_backtest(features=features, prices=prices, model_path=None,
+                          window=30, allow_short=True)
+    assert "metrics" in result
