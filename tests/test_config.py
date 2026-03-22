@@ -41,3 +41,15 @@ def test_policy_kwargs():
 def test_save_dir_default():
     config = AgentConfig()
     assert config.save_dir == "experiments"
+
+
+def test_config_reward_type_default():
+    config = AgentConfig()
+    assert config.reward_type == "basic"
+    assert config.allow_short is False
+
+
+def test_config_reward_type_custom():
+    config = AgentConfig(reward_type="risk_adjusted", allow_short=True)
+    assert config.reward_type == "risk_adjusted"
+    assert config.allow_short is True

@@ -28,6 +28,10 @@ class AgentConfig:
     window: int = 30
     tx_cost: float = 0.001
 
+    # Reward
+    reward_type: str = "basic"       # "basic" or "risk_adjusted"
+    allow_short: bool = False        # allow allocation in [-1, 1]
+
     # Agent type
     agent_type: str = "baseline"
 

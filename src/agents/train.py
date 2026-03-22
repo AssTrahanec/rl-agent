@@ -61,6 +61,7 @@ def _make_dummy_env(config: AgentConfig) -> TradingEnv:
     return TradingEnv(
         features=features, prices=prices,
         window=config.window, tx_cost=config.tx_cost,
+        reward_type=config.reward_type, allow_short=config.allow_short,
     )
 
 
@@ -100,6 +101,8 @@ def train_agent(
             prices=prices,
             window=config.window,
             tx_cost=config.tx_cost,
+            reward_type=config.reward_type,
+            allow_short=config.allow_short,
         )
 
     algo_cls = ALGO_MAP[config.algorithm]
@@ -110,6 +113,7 @@ def train_agent(
         learning_rate=config.learning_rate,
         seed=config.seed,
         verbose=0,
+        device="cpu",
         policy_kwargs=config.policy_kwargs(),
         **_algo_specific_kwargs(config),
     )
