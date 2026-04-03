@@ -1,5 +1,5 @@
 """Add lagged and rolling versions of features to capture delayed market reactions."""
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 
@@ -7,7 +7,7 @@ import pandas as pd
 def add_lag_features(
     df: pd.DataFrame,
     columns: List[str],
-    lags: List[int] = [1, 2],
+    lags: Optional[List[int]] = None,
 ) -> pd.DataFrame:
     """Add time-lagged copies of specified columns.
 
@@ -19,6 +19,8 @@ def add_lag_features(
     Returns:
         DataFrame with added {col}_lag{n} columns. NaN filled with 0.0.
     """
+    if lags is None:
+        lags = [1, 2]
     result = df.copy()
     for col in columns:
         for lag in lags:

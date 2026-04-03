@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 from src.features.lag_features import add_lag_features, add_rolling_features
 
 
