@@ -81,6 +81,18 @@ def test_train_sac():
         assert model_path.exists()
 
 
+def test_feature_counts_embeddings_updated():
+    """embeddings agent feature count reflects 18 baseline + 64 emb + 1 news_count."""
+    from src.agents.train import FEATURE_COUNTS
+    assert FEATURE_COUNTS["embeddings"] == 83  # 18 + 64 + 1
+
+
+def test_feature_counts_fusion_updated():
+    """fusion agent feature count reflects 18 baseline + 1 sentiment + 64 emb + 1 news_count."""
+    from src.agents.train import FEATURE_COUNTS
+    assert FEATURE_COUNTS["fusion"] == 84  # 18 + 1 + 64 + 1
+
+
 def test_train_fusion_agent():
     """Agent-4: train with fusion features (sentiment + embeddings, 53 features total)."""
     with tempfile.TemporaryDirectory() as tmpdir:

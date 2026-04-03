@@ -45,8 +45,8 @@ ALGO_MAP = {
 FEATURE_COUNTS = {
     "baseline": 18,
     "sentiment": 19,     # baseline + 1 sentiment score
-    "embeddings": 50,    # baseline + 32 compressed embedding dims
-    "fusion": 51,        # baseline + 1 sentiment + 32 embeddings (Agent-4)
+    "embeddings": 83,    # baseline(18) + 64 compressed embeddings + 1 news_count
+    "fusion": 84,        # baseline(18) + 1 sentiment + 64 embeddings + 1 news_count
 }
 
 
