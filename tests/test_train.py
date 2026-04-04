@@ -94,7 +94,7 @@ def test_feature_counts_fusion_updated():
 
 
 def test_train_fusion_agent():
-    """Agent-4: train with fusion features (sentiment + embeddings, 53 features total)."""
+    """Agent-4: train with fusion features (price + sentiment + embeddings, 98 features total)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         config = AgentConfig(
             total_timesteps=512,
@@ -108,7 +108,6 @@ def test_train_fusion_agent():
 
 def test_train_embeddings_with_linear_lr():
     """Embeddings agent trains with linear LR schedule."""
-    import tempfile
     with tempfile.TemporaryDirectory() as tmpdir:
         config = AgentConfig(
             total_timesteps=512,
