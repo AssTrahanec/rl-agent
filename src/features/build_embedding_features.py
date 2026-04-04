@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 from src.features.embeddings import compute_embeddings
-from src.features.sentiment import compute_sentiment
+from src.features.sentiment import compute_sentiment_scores
 from src.features.lag_features import add_lag_features, add_rolling_features
 
 logger = logging.getLogger(__name__)
@@ -28,6 +28,14 @@ def build_embedding_features(
     - emb_0_lag1..emb_2_lag2 (top-3 PCA lags for "news direction" memory)
 
     Days without news get zeros for all NLP features.
+
+    Args:
+        price_features: DataFrame indexed by date with normalized price features.
+        news_by_day: DataFrame with columns [date, texts] from news_preprocessor.
+        compressor: Fitted EmbeddingCompressor with transform() method (outputs 64d).
+
+    Returns:
+        price_features with emb columns, news_count, sentiment extremes, and lag/rolling features added.
     """
     result = price_features.copy()
 
@@ -49,8 +57,8 @@ def build_embedding_features(
         n = len(texts)
         result.loc[day, "news_count"] = n
 
-        # Compute per-article sentiment scores
-        sentiment_scores = [compute_sentiment([t]) for t in texts]
+        # Compute per-article sentiment scores (single batched pipeline call)
+        sentiment_scores = compute_sentiment_scores(texts)
         result.loc[day, "sentiment_max"] = max(sentiment_scores)
         result.loc[day, "sentiment_min"] = min(sentiment_scores)
         result.loc[day, "sentiment_spread"] = max(sentiment_scores) - min(sentiment_scores)

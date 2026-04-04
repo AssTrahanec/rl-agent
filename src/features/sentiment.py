@@ -56,3 +56,34 @@ def compute_sentiment(texts: List[str], model: Optional[object] = None) -> float
         scores.append(score)
 
     return float(np.mean(scores))
+
+
+def compute_sentiment_scores(texts: List[str], model: Optional[object] = None) -> List[float]:
+    """Compute per-article sentiment scores from list of texts.
+
+    Uses ProsusAI/finbert: positive -> +1, negative -> -1, neutral -> 0.
+    Returns list of scores, one per article.
+
+    Args:
+        texts: List of news article texts.
+        model: Optional pre-loaded pipeline (for testing).
+
+    Returns:
+        List of floats in [-1, +1]. Returns empty list if texts is empty.
+    """
+    if not texts:
+        return []
+
+    pipe = model if model is not None else _get_pipeline()
+
+    truncated = [t[:512] for t in texts]
+    results = pipe(truncated, truncation=True, max_length=512)
+
+    label_map = {"positive": 1.0, "negative": -1.0, "neutral": 0.0}
+    scores = []
+    for r in results:
+        label = r["label"].lower()
+        score = r["score"] * label_map.get(label, 0.0)
+        scores.append(score)
+
+    return [float(s) for s in scores]

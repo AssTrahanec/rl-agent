@@ -35,7 +35,7 @@ def test_embedding_columns_added():
     news = _make_news_by_day()
     comp = _mock_compressor()
     with patch("src.features.build_embedding_features.compute_embeddings") as mock_emb, \
-         patch("src.features.build_embedding_features.compute_sentiment", return_value=0.5):
+         patch("src.features.build_embedding_features.compute_sentiment_scores", return_value=[0.5]):
         mock_emb.return_value = np.random.randn(768).astype(np.float32)
         result = build_embedding_features(prices, news, compressor=comp)
     # Only base emb columns (not lag columns like emb_0_lag1)
@@ -48,7 +48,7 @@ def test_fallback_zeros_for_no_news_days():
     news = _make_news_by_day()
     comp = _mock_compressor()
     with patch("src.features.build_embedding_features.compute_embeddings") as mock_emb, \
-         patch("src.features.build_embedding_features.compute_sentiment", return_value=0.5):
+         patch("src.features.build_embedding_features.compute_sentiment_scores", return_value=[0.5]):
         mock_emb.return_value = np.ones(768, dtype=np.float32)
         result = build_embedding_features(prices, news, compressor=comp)
     # Days without news should have base emb_ columns = 0.0
@@ -62,7 +62,7 @@ def test_output_same_length():
     news = _make_news_by_day()
     comp = _mock_compressor()
     with patch("src.features.build_embedding_features.compute_embeddings") as mock_emb, \
-         patch("src.features.build_embedding_features.compute_sentiment", return_value=0.5):
+         patch("src.features.build_embedding_features.compute_sentiment_scores", return_value=[0.5]):
         mock_emb.return_value = np.random.randn(768).astype(np.float32)
         result = build_embedding_features(prices, news, compressor=comp)
     assert len(result) == len(prices)
@@ -73,7 +73,7 @@ def test_original_columns_preserved():
     news = _make_news_by_day()
     comp = _mock_compressor()
     with patch("src.features.build_embedding_features.compute_embeddings") as mock_emb, \
-         patch("src.features.build_embedding_features.compute_sentiment", return_value=0.5):
+         patch("src.features.build_embedding_features.compute_sentiment_scores", return_value=[0.5]):
         mock_emb.return_value = np.random.randn(768).astype(np.float32)
         result = build_embedding_features(prices, news, compressor=comp)
     for col in prices.columns:
@@ -86,7 +86,7 @@ def test_news_count_column_added():
     news = _make_news_by_day()
     comp = _mock_compressor()
     with patch("src.features.build_embedding_features.compute_embeddings") as mock_emb, \
-         patch("src.features.build_embedding_features.compute_sentiment", return_value=0.5):
+         patch("src.features.build_embedding_features.compute_sentiment_scores", return_value=[0.5]):
         mock_emb.return_value = np.zeros(768, dtype=np.float32)
         result = build_embedding_features(prices, news, compressor=comp)
     assert "news_count" in result.columns
@@ -103,7 +103,7 @@ def test_embedding_columns_are_64d():
     news = _make_news_by_day()
     comp = _mock_compressor()
     with patch("src.features.build_embedding_features.compute_embeddings") as mock_emb, \
-         patch("src.features.build_embedding_features.compute_sentiment", return_value=0.5):
+         patch("src.features.build_embedding_features.compute_sentiment_scores", return_value=[0.5]):
         mock_emb.return_value = np.zeros(768, dtype=np.float32)
         result = build_embedding_features(prices, news, compressor=comp)
     # Only base emb columns (not lag columns like emb_0_lag1)
@@ -117,9 +117,9 @@ def test_sentiment_extreme_columns_exist():
     news = _make_news_by_day()
     comp = _mock_compressor()
     with patch("src.features.build_embedding_features.compute_embeddings") as mock_emb, \
-         patch("src.features.build_embedding_features.compute_sentiment") as mock_sent:
+         patch("src.features.build_embedding_features.compute_sentiment_scores") as mock_sent:
         mock_emb.return_value = np.zeros(768, dtype=np.float32)
-        mock_sent.side_effect = lambda texts: 0.5 if "surges" in texts[0] else -0.3
+        mock_sent.side_effect = lambda texts: [0.5] if "surges" in texts[0] else [-0.3]
         result = build_embedding_features(prices, news, compressor=comp)
     assert "sentiment_max" in result.columns
     assert "sentiment_min" in result.columns
@@ -135,11 +135,10 @@ def test_sentiment_extremes_values():
         "texts": [["Great news for BTC", "Terrible crash coming"]],
     })
     comp = _mock_compressor()
-    sentiment_values = iter([0.8, -0.6])
     with patch("src.features.build_embedding_features.compute_embeddings") as mock_emb, \
-         patch("src.features.build_embedding_features.compute_sentiment") as mock_sent:
+         patch("src.features.build_embedding_features.compute_sentiment_scores") as mock_sent:
         mock_emb.return_value = np.zeros(768, dtype=np.float32)
-        mock_sent.side_effect = lambda texts: next(sentiment_values)
+        mock_sent.side_effect = lambda texts: [0.8, -0.6]
         result = build_embedding_features(prices, news, compressor=comp)
     day = pd.Timestamp("2024-01-02", tz="UTC")
     assert result.loc[day, "sentiment_max"] == 0.8
@@ -153,7 +152,7 @@ def test_pca_lag_columns_exist():
     news = _make_news_by_day()
     comp = _mock_compressor()
     with patch("src.features.build_embedding_features.compute_embeddings") as mock_emb, \
-         patch("src.features.build_embedding_features.compute_sentiment", return_value=0.5):
+         patch("src.features.build_embedding_features.compute_sentiment_scores", return_value=[0.5]):
         mock_emb.return_value = np.zeros(768, dtype=np.float32)
         result = build_embedding_features(prices, news, compressor=comp)
     for i in range(3):
@@ -167,7 +166,7 @@ def test_news_count_lag_columns_exist():
     news = _make_news_by_day()
     comp = _mock_compressor()
     with patch("src.features.build_embedding_features.compute_embeddings") as mock_emb, \
-         patch("src.features.build_embedding_features.compute_sentiment", return_value=0.5):
+         patch("src.features.build_embedding_features.compute_sentiment_scores", return_value=[0.5]):
         mock_emb.return_value = np.zeros(768, dtype=np.float32)
         result = build_embedding_features(prices, news, compressor=comp)
     assert "news_count_lag1" in result.columns
@@ -181,7 +180,7 @@ def test_news_count_lag_values_correct():
     news = _make_news_by_day()
     comp = _mock_compressor()
     with patch("src.features.build_embedding_features.compute_embeddings") as mock_emb, \
-         patch("src.features.build_embedding_features.compute_sentiment", return_value=0.5):
+         patch("src.features.build_embedding_features.compute_sentiment_scores", return_value=[0.5]):
         mock_emb.return_value = np.zeros(768, dtype=np.float32)
         result = build_embedding_features(prices, news, compressor=comp)
     day_after = pd.Timestamp("2024-01-03", tz="UTC")
