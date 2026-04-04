@@ -18,6 +18,7 @@ class AgentConfig:
     clip_range: float = 0.2
     net_arch: List[int] = field(default_factory=lambda: [256, 256])
     activation_fn: str = "tanh"
+    lr_schedule: str = "constant"    # "constant" or "linear" (decay to 0)
 
     # Training
     total_timesteps: int = 500_000

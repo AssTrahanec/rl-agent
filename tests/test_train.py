@@ -82,15 +82,15 @@ def test_train_sac():
 
 
 def test_feature_counts_embeddings_updated():
-    """embeddings agent feature count reflects 18 baseline + 64 emb + 1 news_count."""
+    """embeddings = 95 features total."""
     from src.agents.train import FEATURE_COUNTS
-    assert FEATURE_COUNTS["embeddings"] == 83  # 18 + 64 + 1
+    assert FEATURE_COUNTS["embeddings"] == 95
 
 
 def test_feature_counts_fusion_updated():
-    """fusion agent feature count reflects 18 baseline + 1 sentiment + 64 emb + 1 news_count."""
+    """fusion = 98 features total."""
     from src.agents.train import FEATURE_COUNTS
-    assert FEATURE_COUNTS["fusion"] == 84  # 18 + 1 + 64 + 1
+    assert FEATURE_COUNTS["fusion"] == 98
 
 
 def test_train_fusion_agent():
@@ -104,3 +104,24 @@ def test_train_fusion_agent():
         )
         model_path = train_agent(config, dummy=True)
         assert model_path.exists()
+
+
+def test_train_embeddings_with_linear_lr():
+    """Embeddings agent trains with linear LR schedule."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = AgentConfig(
+            total_timesteps=512,
+            save_dir=tmpdir,
+            seed=42,
+            agent_type="embeddings",
+            lr_schedule="linear",
+        )
+        model_path = train_agent(config, dummy=True)
+        assert model_path.exists()
+
+
+def test_embeddings_uses_larger_network():
+    """Embeddings agent should use [512, 256] network."""
+    from src.agents.train import EMBEDDINGS_NET_ARCH
+    assert EMBEDDINGS_NET_ARCH == [512, 256]

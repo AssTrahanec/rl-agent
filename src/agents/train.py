@@ -45,9 +45,12 @@ ALGO_MAP = {
 FEATURE_COUNTS = {
     "baseline": 18,
     "sentiment": 19,     # baseline + 1 sentiment score
-    "embeddings": 83,    # baseline(18) + 64 compressed embeddings + 1 news_count
-    "fusion": 84,        # baseline(18) + 1 sentiment + 64 embeddings + 1 news_count
+    "embeddings": 95,    # 18 base + 64 emb + news_count(3: raw+lag1+lag2) + roll7 + 3 sent extremes + 6 PCA lags
+    "fusion": 98,        # embeddings(95) + 3 sentiment (raw + lag1 + lag2)
 }
+
+# Larger network for high-dimensional agents
+EMBEDDINGS_NET_ARCH = [512, 256]
 
 
 def _make_dummy_env(config: AgentConfig) -> TradingEnv:
@@ -63,6 +66,13 @@ def _make_dummy_env(config: AgentConfig) -> TradingEnv:
         window=config.window, tx_cost=config.tx_cost,
         reward_type=config.reward_type, allow_short=config.allow_short,
     )
+
+
+def _linear_schedule(initial_lr: float):
+    """Linear LR decay from initial_lr to 0."""
+    def schedule(progress_remaining: float) -> float:
+        return progress_remaining * initial_lr
+    return schedule
 
 
 def train_agent(
@@ -107,14 +117,24 @@ def train_agent(
 
     algo_cls = ALGO_MAP[config.algorithm]
 
+    # Learning rate: constant or linear decay
+    lr = config.learning_rate
+    if config.lr_schedule == "linear":
+        lr = _linear_schedule(config.learning_rate)
+
+    # Override net_arch for high-dimensional embeddings
+    policy_kwargs = config.policy_kwargs()
+    if config.agent_type in ("embeddings", "fusion") and config.net_arch == [256, 256]:
+        policy_kwargs["net_arch"] = EMBEDDINGS_NET_ARCH
+
     model = algo_cls(
         "MlpPolicy",
         env,
-        learning_rate=config.learning_rate,
+        learning_rate=lr,
         seed=config.seed,
         verbose=0,
         device="cpu",
-        policy_kwargs=config.policy_kwargs(),
+        policy_kwargs=policy_kwargs,
         **_algo_specific_kwargs(config),
     )
 
