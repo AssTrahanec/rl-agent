@@ -51,14 +51,15 @@ _AGENT_SUFFIX = {
 _PRICE_COLUMNS = {"open", "high", "low", "close", "volume"}
 
 
-def _parquet_path(agent_type: str, asset: str, data_dir: str) -> Path:
+def _parquet_path(agent_type: str, asset: str, data_dir: str, timeframe: str = "1d") -> Path:
     prefix = _ASSET_PREFIX.get(asset)
     if prefix is None:
         raise ValueError(f"Unknown asset '{asset}'. Known: {list(_ASSET_PREFIX)}")
     suffix = _AGENT_SUFFIX.get(agent_type)
     if suffix is None:
         raise ValueError(f"Unknown agent_type '{agent_type}'. Known: {list(_AGENT_SUFFIX)}")
-    return Path(data_dir) / f"{prefix}_{suffix}.parquet"
+    tf_prefix = f"{prefix}_4h" if timeframe == "4h" else prefix
+    return Path(data_dir) / f"{tf_prefix}_{suffix}.parquet"
 
 
 def load_features_for_agent(
@@ -67,6 +68,7 @@ def load_features_for_agent(
     train_start: str,
     train_end: str,
     data_dir: str = "data/processed",
+    timeframe: str = "1d",
 ) -> tuple[np.ndarray, np.ndarray]:
     """Load feature matrix and price series for a train/test split.
 
@@ -76,6 +78,7 @@ def load_features_for_agent(
         train_start: Inclusive start date string, e.g. '2020-01-01'.
         train_end: Inclusive end date string, e.g. '2023-12-31'.
         data_dir: Directory containing parquet files (default: 'data/processed').
+        timeframe: Candle timeframe, '1d' (default) or '4h'.
 
     Returns:
         Tuple (features, prices):
@@ -86,7 +89,7 @@ def load_features_for_agent(
         FileNotFoundError: If the parquet file does not exist.
         ValueError:        If the date slice produces an empty DataFrame.
     """
-    path = _parquet_path(agent_type, asset, data_dir)
+    path = _parquet_path(agent_type, asset, data_dir, timeframe=timeframe)
     if not path.exists():
         raise FileNotFoundError(
             f"Feature file not found: {path}\n"
