@@ -3,7 +3,33 @@
     "allow": [
       "WebFetch(domain:dev.to)",
       "Bash(tasklist)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(venv/Scripts/python.exe -m scripts.oos_backtest --start 2025-01-01 --end 2025-03-19)",
+      "Bash(venv/Scripts/python.exe -m scripts.oos_backtest --start 2022-01-01 --end 2022-12-31)",
+      "Bash(venv/Scripts/python.exe experiments/run_all.py --seeds 50,51,52,53,54 --asset BTC/USDT --save-dir experiments --total-timesteps 500000)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:ieeexplore.ieee.org)",
+      "WebFetch(domain:link.springer.com)",
+      "Bash(venv/Scripts/python.exe -m pytest tests/test_ensemble_backtest.py -v)",
+      "Bash(PYTHONPATH=. venv/Scripts/python.exe -m scripts.run_ensemble --period 2024)",
+      "Bash(venv/Scripts/python.exe -m pytest tests/test_walkforward.py -v)",
+      "Bash(PYTHONPATH=. venv/Scripts/python.exe -m scripts.run_walkforward --dummy --total-timesteps 1000)",
+      "WebFetch(domain:cyberleninka.ru)",
+      "WebFetch(domain:www.google.com)",
+      "WebFetch(domain:yandex.ru)",
+      "Bash(python -c \":*)",
+      "Bash(python -m pytest tests/ -v --tb=short)",
+      "Bash(PYTHONPATH=. python experiments/run_improved.py --total-timesteps 500000 --seeds 42,43,44 --agent-type baseline --asset BTC/USDT)",
+      "Bash(PYTHONPATH=. python -m scripts.run_walkforward --agent-type baseline --total-timesteps 500000 --seed 42 --asset BTC/USDT)",
+      "WebFetch(domain:www.mdpi.com)",
+      "WebFetch(domain:www.researchgate.net)",
+      "WebFetch(domain:ceur-ws.org)",
+      "WebFetch(domain:repository.rit.edu)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:peerj.com)",
+      "WebFetch(domain:pmc.ncbi.nlm.nih.gov)",
+      "WebFetch(domain:www.nature.com)",
+      "WebFetch(domain:pure.korea.ac.kr)"
     ]
   }
 }
