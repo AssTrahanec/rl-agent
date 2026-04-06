@@ -59,6 +59,7 @@ def run_all(
     test_end: str = "2024-12-31",
     data_dir: str = "data/processed",
     agent_types: list[str] | None = None,
+    timeframe: str = "1d",
 ) -> list[dict]:
     """Train all agent types × seeds and collect backtest metrics."""
     agent_types = agent_types or AGENT_TYPES
@@ -107,6 +108,7 @@ def run_all(
                 train_end=train_end,
                 asset=asset,
                 data_dir=data_dir,
+                timeframe=timeframe,
             )
             logger.info(f"  Model saved: {model_path}")
 
@@ -120,6 +122,7 @@ def run_all(
                     train_start=test_start,
                     train_end=test_end,
                     data_dir=data_dir,
+                    timeframe=timeframe,
                 )
 
             backtest = run_backtest(
@@ -254,6 +257,10 @@ def main():
         "--data-dir", type=str, default="data/processed",
         help="Directory with preprocessed parquet files (default: data/processed)"
     )
+    parser.add_argument(
+        "--timeframe", type=str, default="1d",
+        help="Candle timeframe: '1d' or '4h' (default: 1d)"
+    )
     args = parser.parse_args()
 
     seeds = [int(s.strip()) for s in args.seeds.split(",")]
@@ -276,6 +283,7 @@ def main():
         test_end=args.test_end,
         data_dir=args.data_dir,
         agent_types=agent_types,
+        timeframe=args.timeframe,
     )
     save_csv(results)
     print_summary(results)

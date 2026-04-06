@@ -82,6 +82,7 @@ def train_agent(
     train_end: str = "2023-12-31",
     asset: str = "BTC/USDT",
     data_dir: str = "data/processed",
+    timeframe: str = "1d",
 ) -> Path:
     """Train an RL agent and save the model.
 
@@ -92,6 +93,7 @@ def train_agent(
         train_end: Training period end date (used when dummy=False).
         asset: Asset symbol, e.g. 'BTC/USDT' (used when dummy=False).
         data_dir: Directory with preprocessed parquet files (used when dummy=False).
+        timeframe: Candle timeframe, e.g. '1d' or '4h' (used when dummy=False).
 
     Returns:
         Path to saved model .zip file.
@@ -105,6 +107,7 @@ def train_agent(
             train_start=train_start,
             train_end=train_end,
             data_dir=data_dir,
+            timeframe=timeframe,
         )
         env = TradingEnv(
             features=features,
