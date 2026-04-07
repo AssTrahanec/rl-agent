@@ -60,6 +60,8 @@ def run_all(
     data_dir: str = "data/processed",
     agent_types: list[str] | None = None,
     timeframe: str = "1d",
+    algorithm: str = "PPO",
+    reward_type: str = "basic",
 ) -> list[dict]:
     """Train all agent types × seeds and collect backtest metrics."""
     agent_types = agent_types or AGENT_TYPES
@@ -94,11 +96,12 @@ def run_all(
 
             config = AgentConfig(
                 agent_type=agent_type,
-                algorithm="PPO",
+                algorithm=algorithm,
                 total_timesteps=total_timesteps,
                 seed=seed,
                 save_dir=save_dir,
                 lr_schedule="linear",
+                reward_type=reward_type,
             )
 
             model_path = train_agent(
@@ -261,6 +264,14 @@ def main():
         "--timeframe", type=str, default="1d",
         help="Candle timeframe: '1d' or '4h' (default: 1d)"
     )
+    parser.add_argument(
+        "--algorithm", type=str, default="PPO",
+        help="RL algorithm: PPO, A2C, or SAC (default: PPO)"
+    )
+    parser.add_argument(
+        "--reward-type", type=str, default="basic",
+        help="Reward function: 'basic' or 'risk_adjusted' (default: basic)"
+    )
     args = parser.parse_args()
 
     seeds = [int(s.strip()) for s in args.seeds.split(",")]
@@ -284,6 +295,8 @@ def main():
         data_dir=args.data_dir,
         agent_types=agent_types,
         timeframe=args.timeframe,
+        algorithm=args.algorithm,
+        reward_type=args.reward_type,
     )
     save_csv(results)
     print_summary(results)

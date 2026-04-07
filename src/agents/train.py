@@ -179,5 +179,6 @@ def _algo_specific_kwargs(config: AgentConfig) -> dict:
         return {
             "gamma": config.gamma,
             "batch_size": config.batch_size,
+            "buffer_size": 100_000,
         }
     return {}
