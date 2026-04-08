@@ -124,3 +124,12 @@ def test_embeddings_uses_larger_network():
     """Embeddings agent should use [128, 64] network."""
     from src.agents.train import EMBEDDINGS_NET_ARCH
     assert EMBEDDINGS_NET_ARCH == [128, 64]
+
+
+def test_train_saves_vecnormalize():
+    """Training saves VecNormalize stats alongside model."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        config = AgentConfig(total_timesteps=256, seed=42, algorithm="PPO", save_dir=tmpdir)
+        model_path = train_agent(config, dummy=True)
+        vecnorm_path = model_path.parent / "vecnormalize.pkl"
+        assert vecnorm_path.exists(), "VecNormalize stats not saved"

@@ -69,7 +69,8 @@ def load_features_for_agent(
     train_end: str,
     data_dir: str = "data/processed",
     timeframe: str = "1d",
-) -> tuple[np.ndarray, np.ndarray]:
+    return_sentiment: bool = False,
+) -> "tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray]":
     """Load feature matrix and price series for a train/test split.
 
     Args:
@@ -146,4 +147,13 @@ def load_features_for_agent(
         f"Loaded {len(df)} rows | {features.shape[1]} features | "
         f"{train_start} – {train_end} | asset={asset}"
     )
+
+    if return_sentiment:
+        if "sentiment_max" in df.columns:
+            sentiment = df["sentiment_max"].to_numpy(dtype=np.float32)
+        else:
+            sentiment = np.zeros(len(df), dtype=np.float32)
+        sentiment = np.nan_to_num(sentiment, nan=0.0)
+        return features, prices, sentiment
+
     return features, prices

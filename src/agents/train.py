@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 from stable_baselines3 import PPO, A2C, SAC
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from src.agents.config import AgentConfig
 from src.data.load_features import load_features_for_agent
@@ -100,15 +101,28 @@ def train_agent(
     """
     if dummy:
         env = _make_dummy_env(config)
+        sentiment = None
     else:
-        features, prices = load_features_for_agent(
-            agent_type=config.agent_type,
-            asset=asset,
-            train_start=train_start,
-            train_end=train_end,
-            data_dir=data_dir,
-            timeframe=timeframe,
-        )
+        if config.agent_type in ("embeddings", "fusion"):
+            features, prices, sentiment = load_features_for_agent(
+                agent_type=config.agent_type,
+                asset=asset,
+                train_start=train_start,
+                train_end=train_end,
+                data_dir=data_dir,
+                timeframe=timeframe,
+                return_sentiment=True,
+            )
+        else:
+            features, prices = load_features_for_agent(
+                agent_type=config.agent_type,
+                asset=asset,
+                train_start=train_start,
+                train_end=train_end,
+                data_dir=data_dir,
+                timeframe=timeframe,
+            )
+            sentiment = None
         env = TradingEnv(
             features=features,
             prices=prices,
@@ -116,7 +130,13 @@ def train_agent(
             tx_cost=config.tx_cost,
             reward_type=config.reward_type,
             allow_short=config.allow_short,
+            sentiment_signal=sentiment if config.agent_type in ("embeddings", "fusion") else None,
+            sentiment_lambda=config.sentiment_lambda,
         )
+
+    # Wrap in VecNormalize
+    vec_env = DummyVecEnv([lambda: env])
+    vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=5.0)
 
     algo_cls = ALGO_MAP[config.algorithm]
 
@@ -132,7 +152,7 @@ def train_agent(
 
     model = algo_cls(
         "MlpPolicy",
-        env,
+        vec_env,
         learning_rate=lr,
         seed=config.seed,
         verbose=0,
@@ -155,6 +175,10 @@ def train_agent(
     model.save(str(model_path.with_suffix("")))  # SB3 adds .zip automatically
     logger.info(f"Saved model to {model_path}")
 
+    vecnorm_path = save_dir / "vecnormalize.pkl"
+    vec_env.save(str(vecnorm_path))
+    logger.info(f"Saved VecNormalize stats to {vecnorm_path}")
+
     return model_path
 
 
@@ -168,17 +192,20 @@ def _algo_specific_kwargs(config: AgentConfig) -> dict:
             "gamma": config.gamma,
             "gae_lambda": config.gae_lambda,
             "clip_range": config.clip_range,
+            "ent_coef": config.ent_coef,
         }
     elif config.algorithm == "A2C":
         return {
             "n_steps": config.n_steps,
             "gamma": config.gamma,
             "gae_lambda": config.gae_lambda,
+            "ent_coef": config.ent_coef,
         }
     elif config.algorithm == "SAC":
         return {
             "gamma": config.gamma,
             "batch_size": config.batch_size,
             "buffer_size": 100_000,
+            "ent_coef": "auto",
         }
     return {}

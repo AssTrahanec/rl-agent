@@ -104,6 +104,13 @@ def run_all(
                 reward_type=reward_type,
             )
 
+            # Embeddings-specific hyperparameter overrides
+            if agent_type in ("embeddings", "fusion"):
+                config.gamma = 0.95
+                config.ent_coef = 0.01
+                config.clip_range = 0.15
+                config.reward_type = "dsr"
+
             model_path = train_agent(
                 config,
                 dummy=dummy,
@@ -128,12 +135,15 @@ def run_all(
                     timeframe=timeframe,
                 )
 
+            vecnorm_path = str(Path(model_path).parent / "vecnormalize.pkl")
+
             backtest = run_backtest(
                 features=test_features,
                 prices=test_prices,
                 model_path=str(model_path),
                 window=config.window,
                 tx_cost=config.tx_cost,
+                vecnorm_path=vecnorm_path,
             )
             metrics = backtest["metrics"]
 
@@ -221,8 +231,8 @@ def main():
         help="Training steps per run (default: 500000)"
     )
     parser.add_argument(
-        "--seeds", type=str, default="42,43,44",
-        help="Comma-separated seeds (default: 42,43,44)"
+        "--seeds", type=str, default="42,43,44,45,46",
+        help="Comma-separated seeds (default: 42,43,44,45,46)"
     )
     parser.add_argument(
         "--save-dir", type=str, default="experiments",
