@@ -10,8 +10,8 @@ from src.features.lag_features import add_lag_features, add_rolling_features
 
 logger = logging.getLogger(__name__)
 
-COMPRESSED_DIM = 64  # increased from 32
-TOP_PCA_LAGS = 3     # lag top-3 PCA components
+COMPRESSED_DIM = 20   # reduced from 64 to prevent overfit
+TOP_PCA_LAGS = 3      # lag top-3 PCA components
 
 
 def build_embedding_features(
@@ -22,7 +22,7 @@ def build_embedding_features(
     """Merge compressed daily embeddings with price features.
 
     Adds:
-    - 64 emb_0..emb_63 columns (PCA-compressed embeddings, weighted by |sentiment|)
+    - 20 emb_0..emb_19 columns (PCA-compressed embeddings, weighted by |sentiment|)
     - news_count, news_count_lag1, news_count_lag2, news_count_roll7
     - sentiment_max, sentiment_min, sentiment_spread (per-day extremes)
     - emb_0_lag1..emb_2_lag2 (top-3 PCA lags for "news direction" memory)
@@ -32,7 +32,7 @@ def build_embedding_features(
     Args:
         price_features: DataFrame indexed by date with normalized price features.
         news_by_day: DataFrame with columns [date, texts] from news_preprocessor.
-        compressor: Fitted EmbeddingCompressor with transform() method (outputs 64d).
+        compressor: Fitted EmbeddingCompressor with transform() method (outputs 20d).
 
     Returns:
         price_features with emb columns, news_count, sentiment extremes, and lag/rolling features added.
@@ -80,6 +80,6 @@ def build_embedding_features(
 
     logger.info(
         f"Added {COMPRESSED_DIM} emb + 3 sentiment extremes + lags/rolling "
-        f"to {len(result)} rows ({len(news_by_day)} days with news)"
+        f"to {len(result)} rows ({len(news_by_day)} days with news)"  # noqa: E501
     )
     return result

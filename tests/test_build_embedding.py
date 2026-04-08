@@ -26,7 +26,7 @@ def _make_news_by_day():
 
 def _mock_compressor():
     compressor = MagicMock()
-    compressor.transform.return_value = np.random.randn(1, 64).astype(np.float32)
+    compressor.transform.return_value = np.random.randn(1, 20).astype(np.float32)
     return compressor
 
 
@@ -40,7 +40,7 @@ def test_embedding_columns_added():
         result = build_embedding_features(prices, news, compressor=comp)
     # Only base emb columns (not lag columns like emb_0_lag1)
     emb_cols = [c for c in result.columns if c.startswith("emb_") and "_lag" not in c]
-    assert len(emb_cols) == 64
+    assert len(emb_cols) == 20
 
 
 def test_fallback_zeros_for_no_news_days():
@@ -97,8 +97,8 @@ def test_news_count_column_added():
     assert result.loc[pd.Timestamp("2024-01-03", tz="UTC"), "news_count"] == 0
 
 
-def test_embedding_columns_are_64d():
-    """build_embedding_features produces 64 emb columns."""
+def test_embedding_columns_are_20d():
+    """build_embedding_features produces 20 emb columns."""
     prices = _make_price_features()
     news = _make_news_by_day()
     comp = _mock_compressor()
@@ -108,7 +108,7 @@ def test_embedding_columns_are_64d():
         result = build_embedding_features(prices, news, compressor=comp)
     # Only base emb columns (not lag columns like emb_0_lag1)
     emb_cols = [c for c in result.columns if c.startswith("emb_") and "_lag" not in c]
-    assert len(emb_cols) == 64
+    assert len(emb_cols) == 20
 
 
 def test_sentiment_extreme_columns_exist():

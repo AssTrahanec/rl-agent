@@ -1,4 +1,4 @@
-"""Compress 768d sentence embeddings to 64d using PCA."""
+"""Compress 768d sentence embeddings to 20d using PCA."""
 import logging
 import pickle
 from pathlib import Path
@@ -10,9 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class EmbeddingCompressor:
-    """PCA-based dimensionality reduction for sentence embeddings (768 -> 64)."""
+    """PCA-based dimensionality reduction for sentence embeddings (768 -> 20)."""
 
-    def __init__(self, input_dim: int = 768, output_dim: int = 64):
+    def __init__(self, input_dim: int = 768, output_dim: int = 20):
         self.input_dim = input_dim
         self.output_dim = output_dim
         self._pca = PCA(n_components=output_dim)

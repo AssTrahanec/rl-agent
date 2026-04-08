@@ -39,22 +39,22 @@ def test_save_and_load():
     np.testing.assert_array_almost_equal(original, reloaded)
 
 
-def test_compressor_768_to_64():
-    """EmbeddingCompressor works with 768d input and 64d output (new defaults)."""
+def test_compressor_768_to_20():
+    """EmbeddingCompressor works with 768d input and 20d output (new defaults)."""
     np.random.seed(42)
     data = np.random.randn(200, 768).astype(np.float32)
-    compressor = EmbeddingCompressor(input_dim=768, output_dim=64)
+    compressor = EmbeddingCompressor(input_dim=768, output_dim=20)
     compressor.fit(data)
     result = compressor.transform(data[:5])
-    assert result.shape == (5, 64)
+    assert result.shape == (5, 20)
     assert compressor.explained_variance_ratio() > 0
 
 
-def test_default_dims_are_768_64():
-    """Default constructor uses 768->64."""
+def test_default_dims_are_768_20():
+    """Default constructor uses 768->20."""
     compressor = EmbeddingCompressor()
     assert compressor.input_dim == 768
-    assert compressor.output_dim == 64
+    assert compressor.output_dim == 20
 
 
 def test_explained_variance():

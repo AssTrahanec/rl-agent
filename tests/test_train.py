@@ -82,15 +82,15 @@ def test_train_sac():
 
 
 def test_feature_counts_embeddings_updated():
-    """embeddings = 95 features total."""
+    """embeddings = 51 features total."""
     from src.agents.train import FEATURE_COUNTS
-    assert FEATURE_COUNTS["embeddings"] == 95
+    assert FEATURE_COUNTS["embeddings"] == 51
 
 
 def test_feature_counts_fusion_updated():
-    """fusion = 98 features total."""
+    """fusion = 54 features total."""
     from src.agents.train import FEATURE_COUNTS
-    assert FEATURE_COUNTS["fusion"] == 98
+    assert FEATURE_COUNTS["fusion"] == 54
 
 
 def test_train_fusion_agent():
@@ -121,6 +121,6 @@ def test_train_embeddings_with_linear_lr():
 
 
 def test_embeddings_uses_larger_network():
-    """Embeddings agent should use [512, 256] network."""
+    """Embeddings agent should use [128, 64] network."""
     from src.agents.train import EMBEDDINGS_NET_ARCH
-    assert EMBEDDINGS_NET_ARCH == [512, 256]
+    assert EMBEDDINGS_NET_ARCH == [128, 64]
