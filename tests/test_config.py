@@ -53,3 +53,17 @@ def test_config_reward_type_custom():
     config = AgentConfig(reward_type="risk_adjusted", allow_short=True)
     assert config.reward_type == "risk_adjusted"
     assert config.allow_short is True
+
+
+def test_config_new_fields_defaults():
+    """New fields ent_coef and sentiment_lambda have correct defaults."""
+    config = AgentConfig()
+    assert config.ent_coef == 0.0
+    assert config.sentiment_lambda == 0.1
+
+
+def test_config_embeddings_overrides():
+    """Embeddings agent can use custom ent_coef."""
+    config = AgentConfig(agent_type="embeddings", ent_coef=0.01, gamma=0.95)
+    assert config.ent_coef == 0.01
+    assert config.gamma == 0.95
