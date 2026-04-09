@@ -53,11 +53,6 @@ FEATURE_COUNTS = {
 # Smaller network for lower-dimensional agents (20d PCA)
 EMBEDDINGS_NET_ARCH = [128, 64]
 
-# Feature count after MI selection (approximate — actual count from selector)
-FEATURE_COUNTS_SELECTED = {
-    "embeddings": 33,  # ~18 base + 8 emb + news/sentiment features (MI > 0.005)
-}
-
 
 def _make_dummy_env(config: AgentConfig) -> TradingEnv:
     """Create a small environment with random data for smoke testing."""
@@ -78,18 +73,6 @@ def _linear_schedule(initial_lr: float):
     """Linear LR decay from initial_lr to 0."""
     def schedule(progress_remaining: float) -> float:
         return progress_remaining * initial_lr
-    return schedule
-
-
-def _warmup_linear_schedule(initial_lr: float, warmup_frac: float = 0.1):
-    """Warmup for first warmup_frac of training, then linear decay to 0."""
-    def schedule(progress_remaining: float) -> float:
-        progress = 1.0 - progress_remaining
-        if progress < warmup_frac:
-            return initial_lr * (progress / warmup_frac)
-        else:
-            decay_progress = (progress - warmup_frac) / (1.0 - warmup_frac)
-            return initial_lr * (1.0 - decay_progress)
     return schedule
 
 
@@ -157,12 +140,10 @@ def train_agent(
 
     algo_cls = ALGO_MAP[config.algorithm]
 
-    # Learning rate: constant, linear decay, or warmup+decay
+    # Learning rate: constant or linear decay
     lr = config.learning_rate
     if config.lr_schedule == "linear":
         lr = _linear_schedule(config.learning_rate)
-    elif config.lr_schedule == "warmup_linear":
-        lr = _warmup_linear_schedule(config.learning_rate, warmup_frac=0.1)
 
     # Override net_arch for high-dimensional embeddings
     policy_kwargs = config.policy_kwargs()
@@ -212,7 +193,6 @@ def _algo_specific_kwargs(config: AgentConfig) -> dict:
             "gae_lambda": config.gae_lambda,
             "clip_range": config.clip_range,
             "ent_coef": config.ent_coef,
-            "max_grad_norm": config.max_grad_norm,
         }
     elif config.algorithm == "A2C":
         return {
@@ -220,7 +200,6 @@ def _algo_specific_kwargs(config: AgentConfig) -> dict:
             "gamma": config.gamma,
             "gae_lambda": config.gae_lambda,
             "ent_coef": config.ent_coef,
-            "max_grad_norm": config.max_grad_norm,
         }
     elif config.algorithm == "SAC":
         return {
