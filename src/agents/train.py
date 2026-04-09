@@ -76,6 +76,18 @@ def _linear_schedule(initial_lr: float):
     return schedule
 
 
+def _warmup_linear_schedule(initial_lr: float, warmup_frac: float = 0.1):
+    """Warmup for first warmup_frac of training, then linear decay to 0."""
+    def schedule(progress_remaining: float) -> float:
+        progress = 1.0 - progress_remaining
+        if progress < warmup_frac:
+            return initial_lr * (progress / warmup_frac)
+        else:
+            decay_progress = (progress - warmup_frac) / (1.0 - warmup_frac)
+            return initial_lr * (1.0 - decay_progress)
+    return schedule
+
+
 def train_agent(
     config: AgentConfig,
     dummy: bool = False,
@@ -140,10 +152,12 @@ def train_agent(
 
     algo_cls = ALGO_MAP[config.algorithm]
 
-    # Learning rate: constant or linear decay
+    # Learning rate: constant, linear decay, or warmup+decay
     lr = config.learning_rate
     if config.lr_schedule == "linear":
         lr = _linear_schedule(config.learning_rate)
+    elif config.lr_schedule == "warmup_linear":
+        lr = _warmup_linear_schedule(config.learning_rate, warmup_frac=0.1)
 
     # Override net_arch for high-dimensional embeddings
     policy_kwargs = config.policy_kwargs()

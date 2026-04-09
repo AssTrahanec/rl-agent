@@ -20,7 +20,7 @@ class AgentConfig:
     sentiment_lambda: float = 0.1
     net_arch: List[int] = field(default_factory=lambda: [256, 256])
     activation_fn: str = "tanh"
-    lr_schedule: str = "constant"    # "constant" or "linear" (decay to 0)
+    lr_schedule: str = "constant"    # "constant", "linear", or "warmup_linear"
 
     # Training
     total_timesteps: int = 500_000

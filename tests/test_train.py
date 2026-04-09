@@ -133,3 +133,18 @@ def test_train_saves_vecnormalize():
         model_path = train_agent(config, dummy=True)
         vecnorm_path = model_path.parent / "vecnormalize.pkl"
         assert vecnorm_path.exists(), "VecNormalize stats not saved"
+
+
+def test_warmup_linear_schedule():
+    """Warmup+linear schedule: LR rises then decays."""
+    from src.agents.train import _warmup_linear_schedule
+    schedule = _warmup_linear_schedule(3e-4, warmup_frac=0.1)
+    # At start (progress_remaining=1.0): warmup phase, LR near 0
+    assert schedule(1.0) < 1e-5
+    # At 90% remaining (10% done = end of warmup): LR at peak
+    assert abs(schedule(0.9) - 3e-4) < 1e-5
+    # At 0% remaining: LR at 0
+    assert schedule(0.0) == 0.0
+    # At 50% remaining: LR should be ~half of peak (linear decay)
+    mid = schedule(0.5)
+    assert 1e-4 < mid < 2.5e-4
