@@ -207,6 +207,7 @@ def _algo_specific_kwargs(config: AgentConfig) -> dict:
             "gae_lambda": config.gae_lambda,
             "clip_range": config.clip_range,
             "ent_coef": config.ent_coef,
+            "max_grad_norm": config.max_grad_norm,
         }
     elif config.algorithm == "A2C":
         return {
@@ -214,6 +215,7 @@ def _algo_specific_kwargs(config: AgentConfig) -> dict:
             "gamma": config.gamma,
             "gae_lambda": config.gae_lambda,
             "ent_coef": config.ent_coef,
+            "max_grad_norm": config.max_grad_norm,
         }
     elif config.algorithm == "SAC":
         return {

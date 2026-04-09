@@ -18,6 +18,7 @@ class AgentConfig:
     clip_range: float = 0.2
     ent_coef: float = 0.0
     sentiment_lambda: float = 0.1
+    max_grad_norm: float = 0.5       # gradient clipping (SB3 default)
     net_arch: List[int] = field(default_factory=lambda: [256, 256])
     activation_fn: str = "tanh"
     lr_schedule: str = "constant"    # "constant", "linear", or "warmup_linear"

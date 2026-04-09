@@ -67,3 +67,9 @@ def test_config_embeddings_overrides():
     config = AgentConfig(agent_type="embeddings", ent_coef=0.01, gamma=0.95)
     assert config.ent_coef == 0.01
     assert config.gamma == 0.95
+
+
+def test_config_max_grad_norm_default():
+    """max_grad_norm defaults to 0.5 (SB3 default)."""
+    config = AgentConfig()
+    assert config.max_grad_norm == 0.5
