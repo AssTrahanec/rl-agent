@@ -53,6 +53,11 @@ FEATURE_COUNTS = {
 # Smaller network for lower-dimensional agents (20d PCA)
 EMBEDDINGS_NET_ARCH = [128, 64]
 
+# Feature count after MI selection (approximate — actual count from selector)
+FEATURE_COUNTS_SELECTED = {
+    "embeddings": 33,  # ~18 base + 8 emb + news/sentiment features (MI > 0.005)
+}
+
 
 def _make_dummy_env(config: AgentConfig) -> TradingEnv:
     """Create a small environment with random data for smoke testing."""
