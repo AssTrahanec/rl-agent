@@ -22,15 +22,18 @@ def test_run_oos_backtest_produces_csv(tmp_path):
 
     def fake_metrics(returns):
         return {
-            "sharpe": 1.5,
-            "sortino": 2.0,
+            "sharpe_ratio": 1.5,
+            "sortino_ratio": 2.0,
             "max_drawdown": -0.1,
-            "calmar": 0.5,
+            "calmar_ratio": 0.5,
             "total_return": 0.2,
         }
 
-    def fake_bootstrap(returns, statistic, n_iter=1000, ci=0.95, seed=0):
-        return (0.9, 2.1)
+    def fake_bootstrap(returns_list, n_bootstrap=1000, confidence=0.95, seed=0):
+        return {
+            "sharpe_ratio": {"ci_lower": 0.9, "ci_upper": 2.1},
+            "total_return": {"ci_lower": 0.1, "ci_upper": 0.3},
+        }
 
     out_csv = tmp_path / "oos.csv"
     with patch.object(oos, "run_backtest", side_effect=fake_backtest), \
@@ -52,3 +55,6 @@ def test_run_oos_backtest_produces_csv(tmp_path):
     assert "sharpe_ci_low" in df.columns
     assert "sharpe_ci_high" in df.columns
     assert "total_return" in df.columns
+    # Check equity JSON was created
+    equity_path = Path(str(out_csv).replace(".csv", "_equity.json"))
+    assert equity_path.exists()
