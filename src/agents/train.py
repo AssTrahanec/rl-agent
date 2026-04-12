@@ -134,9 +134,10 @@ def train_agent(
             sentiment_lambda=config.sentiment_lambda,
         )
 
-    # Wrap in VecNormalize
+    # Wrap in VecNormalize (skip for off-policy SAC — causes replay buffer issues)
     vec_env = DummyVecEnv([lambda: env])
-    vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=5.0)
+    if config.algorithm != "SAC":
+        vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=5.0)
 
     algo_cls = ALGO_MAP[config.algorithm]
 
@@ -156,7 +157,7 @@ def train_agent(
         learning_rate=lr,
         seed=config.seed,
         verbose=0,
-        device="cpu",
+        device=config.device,
         policy_kwargs=policy_kwargs,
         **_algo_specific_kwargs(config),
     )
@@ -175,9 +176,10 @@ def train_agent(
     model.save(str(model_path.with_suffix("")))  # SB3 adds .zip automatically
     logger.info(f"Saved model to {model_path}")
 
-    vecnorm_path = save_dir / "vecnormalize.pkl"
-    vec_env.save(str(vecnorm_path))
-    logger.info(f"Saved VecNormalize stats to {vecnorm_path}")
+    if isinstance(vec_env, VecNormalize):
+        vecnorm_path = save_dir / "vecnormalize.pkl"
+        vec_env.save(str(vecnorm_path))
+        logger.info(f"Saved VecNormalize stats to {vecnorm_path}")
 
     return model_path
 
@@ -204,8 +206,11 @@ def _algo_specific_kwargs(config: AgentConfig) -> dict:
     elif config.algorithm == "SAC":
         return {
             "gamma": config.gamma,
-            "batch_size": config.batch_size,
-            "buffer_size": 100_000,
+            "batch_size": 256,
+            "buffer_size": 10_000,
             "ent_coef": "auto",
+            "learning_starts": 1000,
+            "train_freq": 4,
+            "gradient_steps": 2,
         }
     return {}

@@ -126,6 +126,30 @@ def test_embeddings_uses_larger_network():
     assert EMBEDDINGS_NET_ARCH == [128, 64]
 
 
+def test_train_uses_config_device(monkeypatch):
+    """train_agent must pass config.device to the SB3 constructor."""
+    from src.agents.config import AgentConfig
+    from src.agents import train as train_mod
+
+    captured = {}
+    real_ppo = train_mod.ALGO_MAP["PPO"]
+
+    class SpyPPO(real_ppo):
+        def __init__(self, *args, **kwargs):
+            captured["device"] = kwargs.get("device")
+            super().__init__(*args, **kwargs)
+
+    monkeypatch.setitem(train_mod.ALGO_MAP, "PPO", SpyPPO)
+
+    cfg = AgentConfig(
+        algorithm="PPO", agent_type="baseline",
+        total_timesteps=64, n_steps=32, batch_size=16,
+        device="cpu",
+    )
+    train_mod.train_agent(cfg, dummy=True)
+    assert captured["device"] == "cpu"
+
+
 def test_train_saves_vecnormalize():
     """Training saves VecNormalize stats alongside model."""
     with tempfile.TemporaryDirectory() as tmpdir:
