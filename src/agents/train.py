@@ -46,12 +46,12 @@ ALGO_MAP = {
 FEATURE_COUNTS = {
     "baseline": 18,
     "sentiment": 19,     # baseline + 1 sentiment score
-    "embeddings": 51,    # 18 base + 20 emb + news_count(3: raw+lag1+lag2) + roll7 + 3 sent extremes + 6 PCA lags
+    "embeddings": 95,    # 4h: 18 base + 20 emb + lags + news_count + sent extremes + PCA lags
     "fusion": 54,        # embeddings(51) + 3 sentiment (raw + lag1 + lag2)
 }
 
-# Smaller network for lower-dimensional agents (20d PCA)
-EMBEDDINGS_NET_ARCH = [128, 64]
+# Network for embeddings agents
+EMBEDDINGS_NET_ARCH = [128, 128]
 
 
 def _make_dummy_env(config: AgentConfig) -> TradingEnv:

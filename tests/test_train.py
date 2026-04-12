@@ -82,9 +82,9 @@ def test_train_sac():
 
 
 def test_feature_counts_embeddings_updated():
-    """embeddings = 51 features total."""
+    """embeddings = 95 features total (4h: 18 base + 20 emb + lags + news_count + sent extremes + PCA lags)."""
     from src.agents.train import FEATURE_COUNTS
-    assert FEATURE_COUNTS["embeddings"] == 51
+    assert FEATURE_COUNTS["embeddings"] == 95
 
 
 def test_feature_counts_fusion_updated():
@@ -121,9 +121,42 @@ def test_train_embeddings_with_linear_lr():
 
 
 def test_embeddings_uses_larger_network():
-    """Embeddings agent should use [128, 64] network."""
+    """Embeddings agent should use [128, 128] network."""
     from src.agents.train import EMBEDDINGS_NET_ARCH
-    assert EMBEDDINGS_NET_ARCH == [128, 64]
+    assert EMBEDDINGS_NET_ARCH == [128, 128]
+
+
+def test_embeddings_net_arch_is_128_128():
+    from src.agents.train import EMBEDDINGS_NET_ARCH
+    assert EMBEDDINGS_NET_ARCH == [128, 128]
+
+
+def test_dummy_env_respects_config_net_arch_for_embeddings():
+    """When config.net_arch is already set (via factory), train should honor it."""
+    from src.agents.config import ppo_embeddings_config
+    from src.agents import train as train_mod
+
+    captured = {}
+    real_ppo = train_mod.ALGO_MAP["PPO"]
+
+    class SpyPPO(real_ppo):
+        def __init__(self, *args, **kwargs):
+            captured["policy_kwargs"] = kwargs.get("policy_kwargs")
+            super().__init__(*args, **kwargs)
+
+    cfg = ppo_embeddings_config(seed=42)
+    cfg.total_timesteps = 64
+    cfg.n_steps = 32
+    cfg.batch_size = 16
+
+    monkey_attr = train_mod.ALGO_MAP
+    monkey_attr["PPO"] = SpyPPO
+    try:
+        train_mod.train_agent(cfg, dummy=True)
+    finally:
+        monkey_attr["PPO"] = real_ppo
+
+    assert captured["policy_kwargs"]["net_arch"] == [128, 128]
 
 
 def test_algo_specific_kwargs_sac_reads_config():
