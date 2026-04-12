@@ -95,6 +95,6 @@ if __name__ == "__main__":
         oos_csv=Path("results/oos_2024_embeddings.csv"),
         report_md=Path("results/oos_2024_embeddings_report.md"),
         figures_dir=Path("results/figures/embeddings_v4"),
-        bh_sharpe=bh["sharpe"],
-        bh_total_return=bh["total_return"],
+        bh_sharpe=bh["metrics"]["sharpe_ratio"],
+        bh_total_return=bh["metrics"]["total_return"],
     )

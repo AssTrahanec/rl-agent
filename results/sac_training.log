@@ -1,0 +1,57 @@
+2026-04-12 07:00:52,910 INFO === Training SAC seed=42 ===
+2026-04-12 07:00:52,911 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 07:00:52,958 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+C:\Users\ilya\Desktop\rl\rl-agent\venv\Lib\site-packages\stable_baselines3\common\buffers.py:242: UserWarning: This system does not have apparently enough memory to store the complete replay buffer 6.85GB > 4.58GB
+  warnings.warn(
+2026-04-12 07:00:54,345 INFO Training SAC (embeddings) for 200000 steps, seed=42
+  [ 25.0%]   50000/200000 steps
+  [ 50.0%]  100000/200000 steps
+  [ 75.0%]  150000/200000 steps
+  [100.0%]  200000/200000 steps
+2026-04-12 08:01:07,018 INFO Saved model to experiments\embeddings\20260412_080106\model.zip
+2026-04-12 08:01:07,023 INFO === Training SAC seed=123 ===
+2026-04-12 08:01:07,024 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 08:01:07,187 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+C:\Users\ilya\Desktop\rl\rl-agent\venv\Lib\site-packages\stable_baselines3\common\buffers.py:242: UserWarning: This system does not have apparently enough memory to store the complete replay buffer 6.85GB > 0.56GB
+  warnings.warn(
+2026-04-12 08:01:07,383 INFO Training SAC (embeddings) for 200000 steps, seed=123
+  [ 25.0%]   50000/200000 steps
+  [ 50.0%]  100000/200000 steps
+  [ 75.0%]  150000/200000 steps
+  [100.0%]  200000/200000 steps
+2026-04-12 08:49:31,518 INFO Saved model to experiments\embeddings\20260412_084931\model.zip
+2026-04-12 08:49:31,536 INFO === Training SAC seed=7 ===
+2026-04-12 08:49:31,539 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 08:49:31,851 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+C:\Users\ilya\Desktop\rl\rl-agent\venv\Lib\site-packages\stable_baselines3\common\buffers.py:242: UserWarning: This system does not have apparently enough memory to store the complete replay buffer 6.85GB > 0.79GB
+  warnings.warn(
+2026-04-12 08:49:32,218 INFO Training SAC (embeddings) for 200000 steps, seed=7
+  [ 25.0%]   50000/200000 steps
+  [ 50.0%]  100000/200000 steps
+  [ 75.0%]  150000/200000 steps
+  [100.0%]  200000/200000 steps
+2026-04-12 09:37:40,722 INFO Saved model to experiments\embeddings\20260412_093740\model.zip
+2026-04-12 09:37:40,740 INFO === Training SAC seed=2024 ===
+2026-04-12 09:37:40,743 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 09:37:41,106 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+C:\Users\ilya\Desktop\rl\rl-agent\venv\Lib\site-packages\stable_baselines3\common\buffers.py:242: UserWarning: This system does not have apparently enough memory to store the complete replay buffer 6.85GB > 0.38GB
+  warnings.warn(
+2026-04-12 09:37:41,515 INFO Training SAC (embeddings) for 200000 steps, seed=2024
+  [ 25.0%]   50000/200000 steps
+  [ 50.0%]  100000/200000 steps
+  [ 75.0%]  150000/200000 steps
+  [100.0%]  200000/200000 steps
+2026-04-12 10:25:44,248 INFO Saved model to experiments\embeddings\20260412_102543\model.zip
+2026-04-12 10:25:44,267 INFO === Training SAC seed=99 ===
+2026-04-12 10:25:44,271 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 10:25:44,654 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+C:\Users\ilya\Desktop\rl\rl-agent\venv\Lib\site-packages\stable_baselines3\common\buffers.py:242: UserWarning: This system does not have apparently enough memory to store the complete replay buffer 6.85GB > 0.34GB
+  warnings.warn(
+2026-04-12 10:25:45,257 INFO Training SAC (embeddings) for 200000 steps, seed=99
+  [ 25.0%]   50000/200000 steps
+  [ 50.0%]  100000/200000 steps
+  [ 75.0%]  150000/200000 steps
+  [100.0%]  200000/200000 steps
+2026-04-12 11:13:33,747 INFO Saved model to experiments\embeddings\20260412_111333\model.zip
+2026-04-12 11:13:33,764 INFO Wrote 5 runs to results\sac_runs.csv
+SAC DONE

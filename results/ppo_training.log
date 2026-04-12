@@ -1,0 +1,82 @@
+2026-04-12 05:31:20,211 INFO === Training PPO seed=42 ===
+2026-04-12 05:31:20,211 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 05:31:20,262 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+2026-04-12 05:31:21,582 INFO Training PPO (embeddings) for 500000 steps, seed=42
+  [ 10.0%]   50000/500000 steps
+  [ 20.0%]  100000/500000 steps
+  [ 30.0%]  150000/500000 steps
+  [ 40.0%]  200000/500000 steps
+  [ 50.0%]  250000/500000 steps
+  [ 60.0%]  300000/500000 steps
+  [ 70.0%]  350000/500000 steps
+  [ 80.0%]  400000/500000 steps
+  [ 90.0%]  450000/500000 steps
+  [100.0%]  500000/500000 steps
+2026-04-12 05:41:32,335 INFO Saved model to experiments\embeddings\20260412_054132\model.zip
+2026-04-12 05:41:32,336 INFO Saved VecNormalize stats to experiments\embeddings\20260412_054132\vecnormalize.pkl
+2026-04-12 05:41:32,336 INFO === Training PPO seed=123 ===
+2026-04-12 05:41:32,336 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 05:41:32,355 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+2026-04-12 05:41:32,377 INFO Training PPO (embeddings) for 500000 steps, seed=123
+  [ 10.0%]   50000/500000 steps
+  [ 20.0%]  100000/500000 steps
+  [ 30.0%]  150000/500000 steps
+  [ 40.0%]  200000/500000 steps
+  [ 50.0%]  250000/500000 steps
+  [ 60.0%]  300000/500000 steps
+  [ 70.0%]  350000/500000 steps
+  [ 80.0%]  400000/500000 steps
+  [ 90.0%]  450000/500000 steps
+  [100.0%]  500000/500000 steps
+2026-04-12 05:51:44,306 INFO Saved model to experiments\embeddings\20260412_055144\model.zip
+2026-04-12 05:51:44,307 INFO Saved VecNormalize stats to experiments\embeddings\20260412_055144\vecnormalize.pkl
+2026-04-12 05:51:44,307 INFO === Training PPO seed=7 ===
+2026-04-12 05:51:44,308 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 05:51:44,328 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+2026-04-12 05:51:44,346 INFO Training PPO (embeddings) for 500000 steps, seed=7
+  [ 10.0%]   50000/500000 steps
+  [ 20.0%]  100000/500000 steps
+  [ 30.0%]  150000/500000 steps
+  [ 40.0%]  200000/500000 steps
+  [ 50.0%]  250000/500000 steps
+  [ 60.0%]  300000/500000 steps
+  [ 70.0%]  350000/500000 steps
+  [ 80.0%]  400000/500000 steps
+  [ 90.0%]  450000/500000 steps
+  [100.0%]  500000/500000 steps
+2026-04-12 06:01:58,478 INFO Saved model to experiments\embeddings\20260412_060158\model.zip
+2026-04-12 06:01:58,479 INFO Saved VecNormalize stats to experiments\embeddings\20260412_060158\vecnormalize.pkl
+2026-04-12 06:01:58,480 INFO === Training PPO seed=2024 ===
+2026-04-12 06:01:58,480 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 06:01:58,501 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+2026-04-12 06:01:58,523 INFO Training PPO (embeddings) for 500000 steps, seed=2024
+  [ 10.0%]   50000/500000 steps
+  [ 20.0%]  100000/500000 steps
+  [ 30.0%]  150000/500000 steps
+  [ 40.0%]  200000/500000 steps
+  [ 50.0%]  250000/500000 steps
+  [ 60.0%]  300000/500000 steps
+  [ 70.0%]  350000/500000 steps
+  [ 80.0%]  400000/500000 steps
+  [ 90.0%]  450000/500000 steps
+  [100.0%]  500000/500000 steps
+2026-04-12 06:12:11,626 INFO Saved model to experiments\embeddings\20260412_061211\model.zip
+2026-04-12 06:12:11,627 INFO Saved VecNormalize stats to experiments\embeddings\20260412_061211\vecnormalize.pkl
+2026-04-12 06:12:11,628 INFO === Training PPO seed=99 ===
+2026-04-12 06:12:11,628 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 06:12:11,646 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+2026-04-12 06:12:11,663 INFO Training PPO (embeddings) for 500000 steps, seed=99
+  [ 10.0%]   50000/500000 steps
+  [ 20.0%]  100000/500000 steps
+  [ 30.0%]  150000/500000 steps
+  [ 40.0%]  200000/500000 steps
+  [ 50.0%]  250000/500000 steps
+  [ 60.0%]  300000/500000 steps
+  [ 70.0%]  350000/500000 steps
+  [ 80.0%]  400000/500000 steps
+  [ 90.0%]  450000/500000 steps
+  [100.0%]  500000/500000 steps
+2026-04-12 06:22:21,593 INFO Saved model to experiments\embeddings\20260412_062221\model.zip
+2026-04-12 06:22:21,594 INFO Saved VecNormalize stats to experiments\embeddings\20260412_062221\vecnormalize.pkl
+2026-04-12 06:22:21,595 INFO Wrote 5 runs to results\ppo_runs.csv
+PPO DONE

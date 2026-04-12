@@ -60,8 +60,9 @@ def run_oos_backtest(
     features, prices = _load_test_features(asset, timeframe, test_start, test_end)
     logger.info(f"Loaded test features shape={features.shape}, prices={len(prices)}")
 
+    # First pass: collect per-run metrics and returns grouped by algo
     rows = []
-    rng = np.random.RandomState(0)
+    algo_returns: dict = {}  # algo -> list of return arrays (one per seed)
     for _, run in runs.iterrows():
         algo = run["algorithm"]
         seed = int(run["seed"])
@@ -79,33 +80,29 @@ def run_oos_backtest(
         )
         returns = bt["daily_returns"]
         metrics = compute_metrics(returns)
-        sharpe_low, sharpe_high = bootstrap_ci(
-            returns,
-            statistic=lambda r: compute_metrics(r)["sharpe"],
-            n_iter=1000,
-            ci=0.95,
-            seed=seed,
-        )
-        tr_low, tr_high = bootstrap_ci(
-            returns,
-            statistic=lambda r: compute_metrics(r)["total_return"],
-            n_iter=1000,
-            ci=0.95,
-            seed=seed,
-        )
+        algo_returns.setdefault(algo, []).append(returns)
         rows.append({
             "algorithm": algo,
             "seed": seed,
-            "sharpe": metrics["sharpe"],
-            "sharpe_ci_low": sharpe_low,
-            "sharpe_ci_high": sharpe_high,
-            "sortino": metrics["sortino"],
+            "sharpe": metrics["sharpe_ratio"],
+            "sortino": metrics["sortino_ratio"],
             "max_drawdown": metrics["max_drawdown"],
-            "calmar": metrics["calmar"],
+            "calmar": metrics["calmar_ratio"],
             "total_return": metrics["total_return"],
-            "total_return_ci_low": tr_low,
-            "total_return_ci_high": tr_high,
         })
+
+    # Second pass: compute Bootstrap CI across seeds per algo, attach to rows
+    algo_ci: dict = {}
+    for algo, returns_list in algo_returns.items():
+        ci = bootstrap_ci(returns_list, n_bootstrap=1000, confidence=0.95, seed=0)
+        algo_ci[algo] = ci
+
+    for row in rows:
+        ci = algo_ci[row["algorithm"]]
+        row["sharpe_ci_low"] = ci["sharpe_ratio"]["ci_lower"]
+        row["sharpe_ci_high"] = ci["sharpe_ratio"]["ci_upper"]
+        row["total_return_ci_low"] = ci["total_return"]["ci_lower"]
+        row["total_return_ci_high"] = ci["total_return"]["ci_upper"]
 
     df = pd.DataFrame(rows)
     df.to_csv(output_csv, index=False)

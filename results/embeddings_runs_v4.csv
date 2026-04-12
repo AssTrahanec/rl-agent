@@ -1,0 +1,16 @@
+algorithm,seed,model_path,vecnorm_path,timestamp
+PPO,42,experiments\embeddings\20260412_054132\model.zip,experiments\embeddings\20260412_054132\vecnormalize.pkl,2026-04-12T05:41:32.336991
+PPO,123,experiments\embeddings\20260412_055144\model.zip,experiments\embeddings\20260412_055144\vecnormalize.pkl,2026-04-12T05:51:44.307744
+PPO,7,experiments\embeddings\20260412_060158\model.zip,experiments\embeddings\20260412_060158\vecnormalize.pkl,2026-04-12T06:01:58.479987
+PPO,2024,experiments\embeddings\20260412_061211\model.zip,experiments\embeddings\20260412_061211\vecnormalize.pkl,2026-04-12T06:12:11.628073
+PPO,99,experiments\embeddings\20260412_062221\model.zip,experiments\embeddings\20260412_062221\vecnormalize.pkl,2026-04-12T06:22:21.594571
+A2C,42,experiments\embeddings\20260412_063054\model.zip,experiments\embeddings\20260412_063054\vecnormalize.pkl,2026-04-12T06:30:54.902565
+A2C,123,experiments\embeddings\20260412_063823\model.zip,experiments\embeddings\20260412_063823\vecnormalize.pkl,2026-04-12T06:38:23.308267
+A2C,7,experiments\embeddings\20260412_064543\model.zip,experiments\embeddings\20260412_064543\vecnormalize.pkl,2026-04-12T06:45:43.847883
+A2C,2024,experiments\embeddings\20260412_065311\model.zip,experiments\embeddings\20260412_065311\vecnormalize.pkl,2026-04-12T06:53:11.454347
+A2C,99,experiments\embeddings\20260412_070036\model.zip,experiments\embeddings\20260412_070036\vecnormalize.pkl,2026-04-12T07:00:36.356913
+SAC,42,experiments\embeddings\20260412_080106\model.zip,,2026-04-12T08:01:07.023705
+SAC,123,experiments\embeddings\20260412_084931\model.zip,,2026-04-12T08:49:31.534750
+SAC,7,experiments\embeddings\20260412_093740\model.zip,,2026-04-12T09:37:40.738076
+SAC,2024,experiments\embeddings\20260412_102543\model.zip,,2026-04-12T10:25:44.265133
+SAC,99,experiments\embeddings\20260412_111333\model.zip,,2026-04-12T11:13:33.760194

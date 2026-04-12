@@ -1,0 +1,82 @@
+2026-04-12 06:23:28,567 INFO === Training A2C seed=42 ===
+2026-04-12 06:23:28,567 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 06:23:28,616 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+2026-04-12 06:23:29,893 INFO Training A2C (embeddings) for 500000 steps, seed=42
+  [ 10.0%]   50000/500000 steps
+  [ 20.0%]  100000/500000 steps
+  [ 30.0%]  150000/500000 steps
+  [ 40.0%]  200000/500000 steps
+  [ 50.0%]  250000/500000 steps
+  [ 60.0%]  300000/500000 steps
+  [ 70.0%]  350000/500000 steps
+  [ 80.0%]  400000/500000 steps
+  [ 90.0%]  450000/500000 steps
+  [100.0%]  500000/500000 steps
+2026-04-12 06:30:54,901 INFO Saved model to experiments\embeddings\20260412_063054\model.zip
+2026-04-12 06:30:54,902 INFO Saved VecNormalize stats to experiments\embeddings\20260412_063054\vecnormalize.pkl
+2026-04-12 06:30:54,902 INFO === Training A2C seed=123 ===
+2026-04-12 06:30:54,902 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 06:30:54,923 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+2026-04-12 06:30:54,944 INFO Training A2C (embeddings) for 500000 steps, seed=123
+  [ 10.0%]   50000/500000 steps
+  [ 20.0%]  100000/500000 steps
+  [ 30.0%]  150000/500000 steps
+  [ 40.0%]  200000/500000 steps
+  [ 50.0%]  250000/500000 steps
+  [ 60.0%]  300000/500000 steps
+  [ 70.0%]  350000/500000 steps
+  [ 80.0%]  400000/500000 steps
+  [ 90.0%]  450000/500000 steps
+  [100.0%]  500000/500000 steps
+2026-04-12 06:38:23,307 INFO Saved model to experiments\embeddings\20260412_063823\model.zip
+2026-04-12 06:38:23,307 INFO Saved VecNormalize stats to experiments\embeddings\20260412_063823\vecnormalize.pkl
+2026-04-12 06:38:23,308 INFO === Training A2C seed=7 ===
+2026-04-12 06:38:23,308 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 06:38:23,329 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+2026-04-12 06:38:23,351 INFO Training A2C (embeddings) for 500000 steps, seed=7
+  [ 10.0%]   50000/500000 steps
+  [ 20.0%]  100000/500000 steps
+  [ 30.0%]  150000/500000 steps
+  [ 40.0%]  200000/500000 steps
+  [ 50.0%]  250000/500000 steps
+  [ 60.0%]  300000/500000 steps
+  [ 70.0%]  350000/500000 steps
+  [ 80.0%]  400000/500000 steps
+  [ 90.0%]  450000/500000 steps
+  [100.0%]  500000/500000 steps
+2026-04-12 06:45:43,846 INFO Saved model to experiments\embeddings\20260412_064543\model.zip
+2026-04-12 06:45:43,846 INFO Saved VecNormalize stats to experiments\embeddings\20260412_064543\vecnormalize.pkl
+2026-04-12 06:45:43,847 INFO === Training A2C seed=2024 ===
+2026-04-12 06:45:43,847 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 06:45:43,865 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+2026-04-12 06:45:43,882 INFO Training A2C (embeddings) for 500000 steps, seed=2024
+  [ 10.0%]   50000/500000 steps
+  [ 20.0%]  100000/500000 steps
+  [ 30.0%]  150000/500000 steps
+  [ 40.0%]  200000/500000 steps
+  [ 50.0%]  250000/500000 steps
+  [ 60.0%]  300000/500000 steps
+  [ 70.0%]  350000/500000 steps
+  [ 80.0%]  400000/500000 steps
+  [ 90.0%]  450000/500000 steps
+  [100.0%]  500000/500000 steps
+2026-04-12 06:53:11,453 INFO Saved model to experiments\embeddings\20260412_065311\model.zip
+2026-04-12 06:53:11,454 INFO Saved VecNormalize stats to experiments\embeddings\20260412_065311\vecnormalize.pkl
+2026-04-12 06:53:11,454 INFO === Training A2C seed=99 ===
+2026-04-12 06:53:11,454 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 06:53:11,473 INFO Loaded 8760 rows | 95 features | 2020-01-01 – 2023-12-31 | asset=BTC/USDT
+2026-04-12 06:53:11,496 INFO Training A2C (embeddings) for 500000 steps, seed=99
+  [ 10.0%]   50000/500000 steps
+  [ 20.0%]  100000/500000 steps
+  [ 30.0%]  150000/500000 steps
+  [ 40.0%]  200000/500000 steps
+  [ 50.0%]  250000/500000 steps
+  [ 60.0%]  300000/500000 steps
+  [ 70.0%]  350000/500000 steps
+  [ 80.0%]  400000/500000 steps
+  [ 90.0%]  450000/500000 steps
+  [100.0%]  500000/500000 steps
+2026-04-12 07:00:36,355 INFO Saved model to experiments\embeddings\20260412_070036\model.zip
+2026-04-12 07:00:36,355 INFO Saved VecNormalize stats to experiments\embeddings\20260412_070036\vecnormalize.pkl
+2026-04-12 07:00:36,356 INFO Wrote 5 runs to results\a2c_runs.csv
+A2C DONE
