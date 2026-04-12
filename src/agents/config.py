@@ -22,6 +22,22 @@ class AgentConfig:
     activation_fn: str = "tanh"
     lr_schedule: str = "constant"    # "constant" or "linear" (decay to 0)
 
+    # Shared on-policy / off-policy
+    max_grad_norm: float = 0.5
+    use_sde: bool = False
+    normalize_advantage: bool = True
+
+    # SAC off-policy
+    buffer_size: int = 1_000_000
+    tau: float = 0.005
+    train_freq: int = 1
+    gradient_steps: int = 1
+    learning_starts: int = 100
+    optimize_memory_usage: bool = False
+
+    # Device
+    device: str = "cpu"
+
     # Training
     total_timesteps: int = 500_000
     seed: int = 42

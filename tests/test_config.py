@@ -67,3 +67,18 @@ def test_config_embeddings_overrides():
     config = AgentConfig(agent_type="embeddings", ent_coef=0.01, gamma=0.95)
     assert config.ent_coef == 0.01
     assert config.gamma == 0.95
+
+
+def test_config_new_fields_defaults():
+    from src.agents.config import AgentConfig
+    cfg = AgentConfig()
+    assert cfg.max_grad_norm == 0.5
+    assert cfg.use_sde is False
+    assert cfg.buffer_size == 1_000_000
+    assert cfg.tau == 0.005
+    assert cfg.train_freq == 1
+    assert cfg.gradient_steps == 1
+    assert cfg.learning_starts == 100
+    assert cfg.device == "cpu"
+    assert cfg.normalize_advantage is True
+    assert cfg.optimize_memory_usage is False
