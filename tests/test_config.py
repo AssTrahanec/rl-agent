@@ -69,6 +69,27 @@ def test_config_embeddings_overrides():
     assert config.gamma == 0.95
 
 
+def test_a2c_embeddings_config():
+    from src.agents.config import a2c_embeddings_config
+    cfg = a2c_embeddings_config(seed=123)
+    assert cfg.algorithm == "A2C"
+    assert cfg.agent_type == "embeddings"
+    assert cfg.seed == 123
+    assert cfg.learning_rate == 7e-4
+    assert cfg.lr_schedule == "linear"
+    assert cfg.n_steps == 16
+    assert cfg.gamma == 0.99
+    assert cfg.gae_lambda == 1.0
+    assert cfg.ent_coef == 0.01
+    assert cfg.max_grad_norm == 0.5
+    assert cfg.use_sde is True
+    assert cfg.normalize_advantage is True
+    assert cfg.net_arch == [128, 128]
+    assert cfg.activation_fn == "tanh"
+    assert cfg.total_timesteps == 500_000
+    assert cfg.device == "cpu"
+
+
 def test_ppo_embeddings_config():
     from src.agents.config import ppo_embeddings_config
     cfg = ppo_embeddings_config(seed=42)

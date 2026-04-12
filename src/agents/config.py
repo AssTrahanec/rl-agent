@@ -69,6 +69,32 @@ class AgentConfig:
         }
 
 
+def a2c_embeddings_config(seed: int) -> AgentConfig:
+    """A2C tuned for embeddings 4h per RL Zoo defaults."""
+    return AgentConfig(
+        algorithm="A2C",
+        agent_type="embeddings",
+        seed=seed,
+        learning_rate=7e-4,
+        lr_schedule="linear",
+        n_steps=16,
+        gamma=0.99,
+        gae_lambda=1.0,
+        ent_coef=0.01,
+        max_grad_norm=0.5,
+        use_sde=True,
+        normalize_advantage=True,
+        net_arch=[128, 128],
+        activation_fn="tanh",
+        total_timesteps=500_000,
+        device="cpu",
+        window=30,
+        tx_cost=0.001,
+        reward_type="basic",
+        allow_short=False,
+    )
+
+
 def ppo_embeddings_config(seed: int) -> AgentConfig:
     """PPO tuned for embeddings 4h per RL Zoo / SB3 best practices."""
     return AgentConfig(
