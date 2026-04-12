@@ -126,6 +126,50 @@ def test_embeddings_uses_larger_network():
     assert EMBEDDINGS_NET_ARCH == [128, 64]
 
 
+def test_algo_specific_kwargs_sac_reads_config():
+    from src.agents.config import sac_embeddings_config
+    from src.agents.train import _algo_specific_kwargs
+    cfg = sac_embeddings_config(seed=42)
+    kw = _algo_specific_kwargs(cfg)
+    assert kw["buffer_size"] == 300_000
+    assert kw["learning_starts"] == 10_000
+    assert kw["batch_size"] == 256
+    assert kw["tau"] == 0.02
+    assert kw["train_freq"] == 8
+    assert kw["gradient_steps"] == 8
+    assert kw["ent_coef"] == "auto"
+    assert kw["gamma"] == 0.99
+    assert kw["use_sde"] is True
+    assert kw["optimize_memory_usage"] is True
+
+
+def test_algo_specific_kwargs_ppo_reads_config():
+    from src.agents.config import ppo_embeddings_config
+    from src.agents.train import _algo_specific_kwargs
+    cfg = ppo_embeddings_config(seed=42)
+    kw = _algo_specific_kwargs(cfg)
+    assert kw["n_steps"] == 2048
+    assert kw["batch_size"] == 64
+    assert kw["n_epochs"] == 10
+    assert kw["clip_range"] == 0.2
+    assert kw["ent_coef"] == 0.01
+    assert kw["max_grad_norm"] == 0.5
+    assert kw["use_sde"] is True
+
+
+def test_algo_specific_kwargs_a2c_reads_config():
+    from src.agents.config import a2c_embeddings_config
+    from src.agents.train import _algo_specific_kwargs
+    cfg = a2c_embeddings_config(seed=42)
+    kw = _algo_specific_kwargs(cfg)
+    assert kw["n_steps"] == 16
+    assert kw["gae_lambda"] == 1.0
+    assert kw["ent_coef"] == 0.01
+    assert kw["max_grad_norm"] == 0.5
+    assert kw["normalize_advantage"] is True
+    assert kw["use_sde"] is True
+
+
 def test_train_uses_config_device(monkeypatch):
     """train_agent must pass config.device to the SB3 constructor."""
     from src.agents.config import AgentConfig

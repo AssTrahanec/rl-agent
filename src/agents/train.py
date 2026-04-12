@@ -195,6 +195,8 @@ def _algo_specific_kwargs(config: AgentConfig) -> dict:
             "gae_lambda": config.gae_lambda,
             "clip_range": config.clip_range,
             "ent_coef": config.ent_coef,
+            "max_grad_norm": config.max_grad_norm,
+            "use_sde": config.use_sde,
         }
     elif config.algorithm == "A2C":
         return {
@@ -202,15 +204,21 @@ def _algo_specific_kwargs(config: AgentConfig) -> dict:
             "gamma": config.gamma,
             "gae_lambda": config.gae_lambda,
             "ent_coef": config.ent_coef,
+            "max_grad_norm": config.max_grad_norm,
+            "use_sde": config.use_sde,
+            "normalize_advantage": config.normalize_advantage,
         }
     elif config.algorithm == "SAC":
         return {
             "gamma": config.gamma,
-            "batch_size": 256,
-            "buffer_size": 10_000,
-            "ent_coef": "auto",
-            "learning_starts": 1000,
-            "train_freq": 4,
-            "gradient_steps": 2,
+            "batch_size": config.batch_size,
+            "buffer_size": config.buffer_size,
+            "ent_coef": config.ent_coef,
+            "learning_starts": config.learning_starts,
+            "train_freq": config.train_freq,
+            "gradient_steps": config.gradient_steps,
+            "tau": config.tau,
+            "use_sde": config.use_sde,
+            "optimize_memory_usage": config.optimize_memory_usage,
         }
     return {}
