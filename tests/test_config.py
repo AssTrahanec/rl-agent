@@ -69,6 +69,30 @@ def test_config_embeddings_overrides():
     assert config.gamma == 0.95
 
 
+def test_sac_embeddings_config():
+    from src.agents.config import sac_embeddings_config
+    cfg = sac_embeddings_config(seed=7)
+    assert cfg.algorithm == "SAC"
+    assert cfg.agent_type == "embeddings"
+    assert cfg.seed == 7
+    assert cfg.learning_rate == 7.3e-4
+    assert cfg.lr_schedule == "constant"
+    assert cfg.buffer_size == 300_000
+    assert cfg.learning_starts == 10_000
+    assert cfg.batch_size == 256
+    assert cfg.tau == 0.02
+    assert cfg.gamma == 0.99
+    assert cfg.ent_coef == "auto"
+    assert cfg.train_freq == 8
+    assert cfg.gradient_steps == 8
+    assert cfg.use_sde is True
+    assert cfg.net_arch == [128, 128]
+    assert cfg.activation_fn == "relu"
+    assert cfg.total_timesteps == 200_000
+    assert cfg.optimize_memory_usage is True
+    assert cfg.device == "cuda"
+
+
 def test_a2c_embeddings_config():
     from src.agents.config import a2c_embeddings_config
     cfg = a2c_embeddings_config(seed=123)
