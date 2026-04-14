@@ -4,7 +4,7 @@
 
 **Goal:** Обучить SAC, PPO, A2C × 5 seeds на ETH/USDT 4h данных с embeddings + DSR reward — полный аналог лучших BTC-моделей.
 
-**Architecture:** Те же новости (`data/raw/bitcoin_news.parquet`) что и для BTC — это общие крипто-новости влияющие на оба актива. Новый скрипт `build_eth_4h_dataset.py` собирает ETH 4h фичи (101 колонка, идентичная схема с BTC): скачивает ETH/USDT цены, строит технические индикаторы, обучает новый PCA компрессор только на train-новостях (≤2023-12-31), собирает embeddings + sentiment + lag features. Три новые config-функции в `config.py` + оркестратор `train_eth_embeddings.py` обучают 3 алго × 5 seeds с reward_type="dsr", sentiment_lambda=0.1, и запускают OOS backtest на 2024.
+**Architecture:** Новости загружаются с HuggingFace `maryamfakhari/crypto-news-coindesk-2020-2025` (229k статей, 2019–2025, 97.8% покрытие 4h окон — лучше чем `edaschau/bitcoin_news` с 79.5%). Новый скрипт `build_eth_4h_dataset.py` собирает ETH 4h фичи (101 колонка, идентичная схема с BTC): скачивает ETH/USDT цены, строит технические индикаторы, обучает новый PCA компрессор только на train-новостях (≤2023-12-31), собирает embeddings + sentiment + lag features. Три новые config-функции в `config.py` + оркестратор `train_eth_embeddings.py` обучают 3 алго × 5 seeds с reward_type="dsr", sentiment_lambda=0.1, и запускают OOS backtest на 2024.
 
 **Tech Stack:** Python 3.10+, ccxt (Binance), sentence-transformers (all-MiniLM-L6-v2), FinBERT, SB3 (SAC/PPO/A2C), pandas/numpy, sklearn (PCA).
 
@@ -14,7 +14,8 @@
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `scripts/build_eth_4h_dataset.py` | Create | ETH 4h OHLCV + NLP features → parquet |
+| `scripts/build_eth_4h_dataset.py` | Create | ETH 4h OHLCV + NLP features → parquet (использует HF `maryamfakhari/crypto-news-coindesk-2020-2025`) |
+| `data/raw/eth_news.parquet` | Output | Локальная копия HF датасета (2020–2025) |
 | `data/processed/eth_4h_embedding_features.parquet` | Output | 101-col feature file для ETH |
 | `data/processed/eth_4h_compressor.pkl` | Output | PCA 384→64, fit только на train |
 | `src/agents/config.py` | Modify | Добавить 3 ETH DSR factory-функции |
@@ -57,14 +58,33 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(na
 logger = logging.getLogger(__name__)
 
 RAW_OHLCV_PATH = "data/raw/eth_4h_ohlcv.parquet"
-RAW_NEWS_PATH = "data/raw/bitcoin_news.parquet"   # same crypto news used for BTC
+RAW_NEWS_PATH = "data/raw/eth_news.parquet"
 OUTPUT_BASELINE = "data/processed/eth_4h_features.parquet"
 OUTPUT_EMBEDDINGS = "data/processed/eth_4h_embedding_features.parquet"
 COMPRESSOR_PATH = "data/processed/eth_4h_compressor.pkl"
 
+HF_DATASET = "maryamfakhari/crypto-news-coindesk-2020-2025"
 COMPRESSED_DIM = 64
 TOP_PCA_LAGS = 3
 TRAIN_END = "2023-12-31"
+
+
+def step0_download_news():
+    """Download crypto news from HuggingFace and save locally."""
+    from datasets import load_dataset as hf_load
+    logger.info(f"Step 0: Downloading news from HuggingFace: {HF_DATASET}")
+    ds = hf_load(HF_DATASET, split="train")
+    df = ds.to_pandas()
+    # Normalise to standard format: title, text, date
+    df = df.rename(columns={"body": "text", "published_on": "date"})
+    df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
+    df = df.dropna(subset=["date"])
+    df = df[["title", "text", "date"]].reset_index(drop=True)
+    Path(RAW_NEWS_PATH).parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(RAW_NEWS_PATH)
+    logger.info(f"  Saved {len(df)} articles to {RAW_NEWS_PATH}")
+    logger.info(f"  Date range: {df['date'].min()} -> {df['date'].max()}")
+    return df
 
 
 def step1_download_ohlcv():
@@ -94,14 +114,6 @@ def step3_embedding_features(baseline_df: pd.DataFrame):
     """Add NLP features (sentiment + embeddings + lags) → embedding parquet."""
     logger.info("Step 3: Loading and preprocessing news for 4h windows...")
     raw_news = pd.read_parquet(RAW_NEWS_PATH)
-
-    col_map = {}
-    if "article_text" in raw_news.columns:
-        col_map["article_text"] = "text"
-    if "date_time" in raw_news.columns:
-        col_map["date_time"] = "date"
-    if col_map:
-        raw_news = raw_news.rename(columns=col_map)
     raw_news["date"] = pd.to_datetime(raw_news["date"], utc=True)
 
     news_4h = preprocess_news_4h(raw_news)
@@ -180,10 +192,16 @@ def step3_embedding_features(baseline_df: pd.DataFrame):
 
 def main():
     parser = argparse.ArgumentParser(description="Build ETH/USDT 4h dataset")
-    parser.add_argument("--skip-download", action="store_true", help="Skip OHLCV download")
+    parser.add_argument("--skip-news", action="store_true", help="Skip news download (use cached)")
+    parser.add_argument("--skip-ohlcv", action="store_true", help="Skip OHLCV download (use cached)")
     args = parser.parse_args()
 
-    if args.skip_download and Path(RAW_OHLCV_PATH).exists():
+    if args.skip_news and Path(RAW_NEWS_PATH).exists():
+        logger.info("Using cached ETH news...")
+    else:
+        step0_download_news()
+
+    if args.skip_ohlcv and Path(RAW_OHLCV_PATH).exists():
         logger.info("Using cached ETH OHLCV...")
         ohlcv = pd.read_parquet(RAW_OHLCV_PATH)
     else:
@@ -245,16 +263,18 @@ PYTHONPATH=. venv/Scripts/python.exe scripts/build_eth_4h_dataset.py 2>&1 | tee 
 
 Ожидается:
 ```
+Step 0: Downloading news from HuggingFace: maryamfakhari/crypto-news-coindesk-2020-2025...
+  Saved ~229000 articles to data/raw/eth_news.parquet
 Step 1: Downloading ETH/USDT 4h OHLCV from Binance...
   Saved ~10956 candles to data/raw/eth_4h_ohlcv.parquet
 Step 2: Building baseline features...
   Baseline: (~10956, 25) saved to data/processed/eth_4h_features.parquet
 Step 3: Loading and preprocessing news for 4h windows...
-  ~8700 4h windows with news
+  ~10712 4h windows with news
 Step 3a: Computing raw embeddings for PCA (train period only)...
 Step 3b: Fitting PCA compressor (train only)...
 Step 3c: Building embedding features per 4h window...
-  Matched ~8700/8700 windows to OHLCV index
+  Matched ~10712/10712 windows to OHLCV index
   Embeddings: (~10956, 101), 95 features saved to data/processed/eth_4h_embedding_features.parquet
 Done!
 ```
@@ -282,7 +302,7 @@ print('emb_0 nonzero rows:', (df['emb_0'] != 0).sum())
 assert df.shape[1] == 101, f'Expected 101 cols, got {df.shape[1]}'
 assert len(feat_cols) == 95, f'Expected 95 feature cols, got {len(feat_cols)}'
 assert df[feat_cols].isna().sum().sum() == 0, 'NaNs found in features'
-assert (df['news_count'] != 0).sum() > 5000, 'Too few windows with news'
+assert (df['news_count'] != 0).sum() > 8000, 'Too few windows with news (expected >8000 with 97.8% coverage)'
 print('OK: schema verified')
 "
 ```
@@ -799,7 +819,7 @@ git commit -m "results(eth): OOS 2024 ETH/USDT embeddings DSR — SAC/PPO/A2C x5
 
 **Spec coverage:**
 - ✅ ETH 4h OHLCV download (Task 1)
-- ✅ Те же крипто-новости что и BTC — `bitcoin_news.parquet` (Task 2)
+- ✅ Новости с HF `maryamfakhari/crypto-news-coindesk-2020-2025` — 229k статей, 97.8% покрытие (Task 1 step0, Task 2)
 - ✅ Новый PCA компрессор, fit только на train ≤2023-12-31 (Task 2)
 - ✅ Schema 101 cols / 95 features — идентично BTC 4h (Task 2, verification step)
 - ✅ `load_features_for_agent` ETH/USDT 4h проверяется (Task 2, step 4)
