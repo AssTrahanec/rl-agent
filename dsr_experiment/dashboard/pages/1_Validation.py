@@ -27,7 +27,7 @@ st.title("Валидация стратегий на истории")
 
 
 # ---- Controls ----
-entries = list_model_entries()
+entries = list_model_entries(all_snapshots=True)
 if not entries:
     st.error("Нет обученных моделей.")
     st.stop()

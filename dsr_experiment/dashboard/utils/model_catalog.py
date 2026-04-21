@@ -41,17 +41,30 @@ class ModelEntry:
         return f"{self.snapshot}::{self.algo}"
 
 
-def list_model_entries() -> list[ModelEntry]:
-    """Enumerate every (snapshot, algo) combination that has model.zip files."""
+# Only these (snapshot, algo) pairs are exposed to the dashboard UI.
+# Validation page iterates more broadly via an internal helper.
+_VISIBLE_ENTRIES: set[tuple[str, str]] = {
+    ("run_2026-04-21_10seeds", "DQN"),
+    ("run_2026-04-21_10seeds", "SAC"),
+}
+
+
+def list_model_entries(all_snapshots: bool = False) -> list[ModelEntry]:
+    """Enumerate (snapshot, algo) combos that have model.zip files.
+
+    By default returns only the two primary 10-seed configurations
+    (DQN + SAC from run_2026-04-21_10seeds). Pass all_snapshots=True
+    to get everything (used by the Validation page).
+    """
     out: list[ModelEntry] = []
     for snap in snapshot.list_snapshots():
         models = snapshot.discover_models(snap)
         for algo, entries in models.items():
             if not entries:
                 continue
+            if not all_snapshots and (snap, algo) not in _VISIBLE_ENTRIES:
+                continue
             out.append(ModelEntry(snapshot=snap, algo=algo, n_seeds=len(entries)))
-    # Order: newest snapshot first (matches list_snapshots which sorts newest first),
-    # then within a snapshot — DQN before SAC before PPO.
     algo_order = {"DQN": 0, "SAC": 1, "PPO": 2}
     snap_order = {s: i for i, s in enumerate(snapshot.list_snapshots())}
     out.sort(key=lambda e: (snap_order.get(e.snapshot, 99), algo_order.get(e.algo, 99)))
