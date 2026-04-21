@@ -1,4 +1,13 @@
 """Backtest tab — interactive viewer for saved snapshot results."""
+import sys
+from pathlib import Path
+
+# pages/*.py run with cwd=dsr_experiment/; add project root for imports
+_THIS = Path(__file__).resolve()
+_PROJECT_ROOT = _THIS.parent.parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 import numpy as np
 import pandas as pd
 import streamlit as st

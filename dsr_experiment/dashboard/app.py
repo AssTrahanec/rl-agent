@@ -1,4 +1,14 @@
 """Streamlit dashboard — entry point and home screen."""
+import sys
+from pathlib import Path
+
+# Add dsr_experiment/ to sys.path so `from dashboard.utils...` works when
+# streamlit runs this script with `cwd=dsr_experiment/`.
+_THIS = Path(__file__).resolve()
+_PROJECT_ROOT = _THIS.parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
 import streamlit as st
 
 from dashboard.utils.paths import DEFAULT_SNAPSHOT, ensure_lib_on_path
