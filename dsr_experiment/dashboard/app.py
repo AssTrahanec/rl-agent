@@ -329,45 +329,135 @@ if period_days < 14:
 # ========================================================================
 
 st.divider()
-with st.expander(f"Лента решений ({len(decorated) - 1} предыдущих окон)", expanded=False):
-    for b in decorated[1:]:
-        dec = b.get("decision")
-        ts_str = b["bucket_ts"].strftime("%Y-%m-%d %H:%M UTC")
+st.subheader("История решений")
+st.caption("Что агент делал каждые 4 часа — и что из этого получилось.")
 
-        if dec is None:
-            st.markdown(f"**{ts_str}** · ошибка: {b.get('error', '—')}")
-            continue
+for b in decorated[1:]:
+    dec = b.get("decision")
+    ts_str = b["bucket_ts"].strftime("%d %b, %H:%M UTC")
 
-        if dec.direction == "increase":
-            action_icon = "▲ BUY"
-            action_color = "#2ca02c"
-        elif dec.direction == "decrease":
-            action_icon = "▼ SELL"
-            action_color = "#d62728"
+    if dec is None:
+        st.markdown(f"**{ts_str}** · ошибка: {b.get('error', '—')}")
+        continue
+
+    # Direction & action description
+    prev_pct = int(dec.prev_allocation * 100)
+    new_pct = int(dec.allocation * 100)
+    change_pct = new_pct - prev_pct
+
+    if dec.direction == "increase":
+        action_title = f"Купил BTC"
+        action_color = "#2ca02c"
+        action_detail = f"увеличил долю с {prev_pct}% до {new_pct}% (+{change_pct}%)"
+    elif dec.direction == "decrease":
+        action_title = f"Продал BTC"
+        action_color = "#d62728"
+        action_detail = f"сократил долю с {prev_pct}% до {new_pct}% ({change_pct}%)"
+    else:
+        action_title = f"Оставил позицию"
+        action_color = "#6c757d"
+        action_detail = f"доля в BTC: {new_pct}% (без изменений)"
+
+    # Vote summary — human-readable
+    if dec.votes:
+        buy_n = dec.votes.get("BUY", 0)
+        hold_n = dec.votes.get("HOLD", 0)
+        sell_n = dec.votes.get("SELL", 0)
+        vote_parts = []
+        if buy_n > 0: vote_parts.append(f"{buy_n} за покупку")
+        if hold_n > 0: vote_parts.append(f"{hold_n} за удержание")
+        if sell_n > 0: vote_parts.append(f"{sell_n} за продажу")
+        vote_text = f"Из 10 моделей: {', '.join(vote_parts)}"
+    else:
+        vote_text = f"Средняя рекомендуемая доля 10 моделей: {new_pct}%"
+
+    # P&L — human-readable
+    if dec.trade_pnl is not None and dec.next_bar_return is not None:
+        price_move_pct = (np.exp(dec.next_bar_return) - 1) * 100
+        trade_pct = dec.trade_pnl * 100
+        if dec.trade_pnl > 0:
+            pnl_color = "#2ca02c"
+            pnl_verb = "заработал"
+        elif dec.trade_pnl < 0:
+            pnl_color = "#d62728"
+            pnl_verb = "потерял"
         else:
-            action_icon = "● HOLD"
-            action_color = "#6c757d"
+            pnl_color = "#6c757d"
+            pnl_verb = "без изменений"
+        pnl_line = (
+            f'За следующие 4 часа цена BTC сдвинулась на '
+            f'<b>{price_move_pct:+.2f}%</b>. Агент {pnl_verb} '
+            f'<b style="color:{pnl_color}">{trade_pct:+.2f}%</b> от капитала.'
+        )
+    else:
+        pnl_line = "Следующий 4h бар ещё не закрылся — результат сделки пока неизвестен."
 
-        if dec.trade_pnl is not None:
-            pnl_pct = dec.trade_pnl * 100
-            pnl_color = "#2ca02c" if dec.trade_pnl > 0 else ("#d62728" if dec.trade_pnl < 0 else "#6c757d")
-            pnl_text = f'<span style="color:{pnl_color};font-weight:700;">{pnl_pct:+.2f}%</span>'
-        else:
-            pnl_text = '<span style="color:#888;">—</span>'
+    # News mood
+    mean_s = b["sentiment_mean"]
+    if mean_s > 0.15:
+        mood = "позитивный"
+        mood_color = "#2ca02c"
+    elif mean_s < -0.15:
+        mood = "негативный"
+        mood_color = "#d62728"
+    else:
+        mood = "нейтральный"
+        mood_color = "#6c757d"
 
-        if dec.votes:
-            dom = max(dec.votes.items(), key=lambda kv: kv[1])
-            votes_short = f"{dom[1]}/{dec.total_seeds}"
-        else:
-            votes_short = f"{int(dec.allocation*100)}%"
-
-        cols = st.columns([2, 1, 2, 1, 1])
-        cols[0].markdown(f"**{ts_str}**")
-        cols[1].markdown(
-            f'<span style="background:{action_color};color:white;padding:2px 8px;'
-            f'border-radius:4px;font-weight:600;font-size:13px;">{action_icon}</span>',
+    with st.container(border=True):
+        # Header row — timestamp + action badge
+        hdr_cols = st.columns([2, 2])
+        hdr_cols[0].markdown(f"**{ts_str}**")
+        hdr_cols[1].markdown(
+            f'<div style="text-align:right;">'
+            f'<span style="background:{action_color};color:white;padding:4px 12px;'
+            f'border-radius:6px;font-weight:700;">{action_title}</span>'
+            f'</div>',
             unsafe_allow_html=True,
         )
-        cols[2].markdown(f"{b['n_news']} нов · sent {b['sentiment_mean']:+.2f}")
-        cols[3].markdown(f"согл: **{votes_short}**")
-        cols[4].markdown(f"P&L: {pnl_text}", unsafe_allow_html=True)
+
+        # Action details
+        st.markdown(f"**Что сделал:** {action_detail}")
+
+        # Voting
+        st.markdown(f"**Решение ансамбля:** {vote_text}")
+
+        # Result
+        st.markdown(f"**Результат:** {pnl_line}", unsafe_allow_html=True)
+
+        # News block
+        st.markdown(
+            f"**Новости в этом окне** ({b['n_news']} шт., общий настрой — "
+            f'<span style="color:{mood_color};font-weight:700;">{mood}</span>, '
+            f"средняя оценка {mean_s:+.2f}):",
+            unsafe_allow_html=True,
+        )
+
+        items_to_show = sorted(b["items"], key=lambda x: -abs(x["sentiment_score"]))[:6]
+        for item in items_to_show:
+            s_score = item["sentiment_score"]
+            s_label = item["sentiment_label"]
+            if s_label == "positive":
+                icon = "📈"
+                s_color = "#2ca02c"
+                mood_word = "позитивная"
+            elif s_label == "negative":
+                icon = "📉"
+                s_color = "#d62728"
+                mood_word = "негативная"
+            else:
+                icon = "●"
+                s_color = "#6c757d"
+                mood_word = "нейтральная"
+            ts_sub = pd.Timestamp(item["ts"]).strftime("%H:%M")
+            st.markdown(
+                f'<div style="margin-left:10px;margin-bottom:6px;">'
+                f'{icon} <a href="{item["link"]}" target="_blank">{item["title"]}</a> '
+                f'<span style="color:{s_color};font-weight:600;">— {mood_word}</span> '
+                f'<span style="color:#888;font-size:12px;">({item["source"]}, {ts_sub})</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+        if len(b["items"]) > 6:
+            st.caption(f"... и ещё {len(b['items']) - 6} новостей в этом окне")
+
