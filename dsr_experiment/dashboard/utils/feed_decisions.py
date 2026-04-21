@@ -1,14 +1,17 @@
-"""Run a selected model on each 4h news bucket and produce a decision.
+"""Run all seeds of a selected model on each 4h news bucket.
 
 For each bucket we:
-1. Fetch OHLCV ending at the bucket's 4h boundary.
-2. Build baseline features (tech indicators + z-score) like training.
-3. Aggregate news embeddings (signed-weighted, same as build_data.py).
-4. Compute sentiment features (max/min/mean/std/spread).
-5. Insert into the last row of features matrix.
-6. Build obs and run model.predict.
+1. Fetch OHLCV up to the bucket's 4h boundary.
+2. Build features (tech + zscore + signed-weighted embedding + sentiment).
+3. Run EVERY seed of the selected model on this obs.
+4. Aggregate results into an ensemble decision:
+   - per-seed allocation
+   - mean allocation
+   - vote counts (for DQN)
+5. Thread prev_allocation through buckets (oldest first).
 """
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -24,33 +27,35 @@ from dashboard.utils.model_loader import load_sb3_model, load_compressor
 from dashboard.utils.news_live import get_embedder
 
 ensure_lib_on_path()
-from lib.data_loader import _PRICE_COLUMNS_EXT
 
 
 @dataclass(frozen=True)
-class BucketDecision:
-    action_label: str     # "BUY" / "SELL" / "HOLD" / "LONG X%" / "CASH" etc
-    action_color: str     # hex colour for the badge
-    allocation: float     # 0..1 target allocation after this bar
-    q_values: dict | None # for DQN, {"HOLD":..., "BUY":..., "SELL":...}
+class EnsembleDecision:
+    # Aggregated allocation (mean across seeds) in [0, 1]
+    allocation: float
+    # Previous allocation for reference (comes from threading)
+    prev_allocation: float
+    # Action direction vs previous position: "increase" / "decrease" / "hold"
+    direction: str
+    # Per-seed votes for DQN ("BUY" / "SELL" / "HOLD") or None for SAC/PPO
+    votes: Optional[dict]        # {"BUY": 7, "HOLD": 2, "SELL": 1}
+    total_seeds: int
+    # Realized P&L on next bar if available
+    next_bar_return: Optional[float]  # log-return to next close
+    trade_pnl: Optional[float]        # allocation * next_bar_return (as daily return)
 
 
 def _build_window_features(ohlcv_window: pd.DataFrame,
                            bucket_news: list[dict] | None) -> np.ndarray:
-    """Build a single feature row matching training schema for the *last* bar.
-
-    For news, we compute the same signed-weighted aggregation as build_data.py
-    and apply the saved PCA compressor.
-    """
     from lib.features.price import add_technical_indicators, rolling_zscore_normalize
     from lib.features.lag import add_lag_features, add_rolling_features
+    from lib.data_loader import _PRICE_COLUMNS_EXT
 
     df = add_technical_indicators(ohlcv_window)
     df["raw_close"] = df["close"].copy()
     cols_norm = [c for c in df.columns if c != "raw_close"]
     df[cols_norm] = rolling_zscore_normalize(df[cols_norm], window=NORMALIZE_WINDOW)
 
-    # Embedding features: 64 zeros, filled on the last row if we have news
     for i in range(EMB_DIM):
         df[f"emb_{i}"] = 0.0
     df["news_count"] = 0
@@ -73,7 +78,6 @@ def _build_window_features(ohlcv_window: pd.DataFrame,
 
         embedder = get_embedder()
         raw = embedder.encode(texts, show_progress_bar=False)
-        # Signed weights (build_data.py logic)
         signed_w = np.array([
             s + np.sign(s) * 0.1 if s != 0 else 0.1 for s in scores
         ], dtype=np.float32)
@@ -89,7 +93,6 @@ def _build_window_features(ohlcv_window: pd.DataFrame,
         for i in range(EMB_DIM):
             df.iloc[-1, df.columns.get_loc(f"emb_{i}")] = float(compressed[i])
 
-    # Lag + rolling same as training
     df = add_lag_features(df, columns=["news_count"], lags=NEWS_LAGS)
     df = add_rolling_features(
         df, columns=["news_count", "sentiment_mean"], window=NEWS_ROLL,
@@ -97,7 +100,6 @@ def _build_window_features(ohlcv_window: pd.DataFrame,
     top_cols = [f"emb_{i}" for i in range(TOP_PCA_LAGS)]
     df = add_lag_features(df, columns=top_cols, lags=NEWS_LAGS)
 
-    # Match training column order
     target_cols = expected_feature_columns()
     feat_df = df.reindex(columns=target_cols + ["raw_close"])
     features = feat_df[target_cols].to_numpy(dtype=np.float32)
@@ -106,73 +108,132 @@ def _build_window_features(ohlcv_window: pd.DataFrame,
 
 
 @st.cache_data(ttl=900, show_spinner=False)
-def ohlcv_up_to(bucket_ts_iso: str, n_bars: int = 60) -> pd.DataFrame:
-    """Get last n_bars OHLCV bars ending at or before `bucket_ts`."""
-    df, _src = fetch_live_ohlcv(lookback_bars=n_bars * 2, use_live=True)
-    cutoff = pd.Timestamp(bucket_ts_iso)
-    if cutoff.tz is None:
-        cutoff = cutoff.tz_localize("UTC")
-    df = df[df.index <= cutoff]
-    if len(df) > n_bars:
-        df = df.tail(n_bars)
+def _fetch_ohlcv_cached() -> pd.DataFrame:
+    df, _ = fetch_live_ohlcv(lookback_bars=300, use_live=True)
     return df
 
 
-def decide(model, algo: str, features: np.ndarray,
-           prev_alloc: float = 0.0, window: int = 30) -> BucketDecision:
-    if len(features) < window:
-        raise ValueError(f"need >= {window} bars, got {len(features)}")
-    obs = np.append(features[-window:].flatten(), prev_alloc).astype(np.float32)
-    action, _ = model.predict(obs, deterministic=True)
-
-    if algo == "DQN":
-        a = int(np.asarray(action).flatten()[0]) if not np.isscalar(action) else int(action)
-        labels_map = {0: ("HOLD", "#6c757d", prev_alloc),
-                      1: ("BUY", "#2ca02c", 1.0),
-                      2: ("SELL", "#d62728", 0.0)}
-        label, color, alloc = labels_map.get(a, (f"action {a}", "#6c757d", prev_alloc))
-        q_dict = None
+def _ensemble_on_obs(obs: np.ndarray, seeds_paths: list[tuple[int, str]],
+                     algo: str, prev_alloc: float) -> dict:
+    """Run every seed's model on the same obs, aggregate."""
+    allocs = []
+    labels = []  # For DQN: BUY/SELL/HOLD per seed
+    for seed, path in seeds_paths:
         try:
-            import torch
-            obs_t = torch.as_tensor(obs).float().unsqueeze(0)
-            with torch.no_grad():
-                q = model.q_net(obs_t).numpy().flatten()
-            q_dict = {"HOLD": float(q[0]), "BUY": float(q[1]), "SELL": float(q[2])}
+            model = load_sb3_model(path, algo_hint=algo)
         except Exception:  # noqa: BLE001
-            pass
-        return BucketDecision(label, color, alloc, q_dict)
+            continue
+        action, _ = model.predict(obs, deterministic=True)
+        if algo == "DQN":
+            a = int(np.asarray(action).flatten()[0]) if not np.isscalar(action) else int(action)
+            if a == 1:
+                allocs.append(1.0); labels.append("BUY")
+            elif a == 2:
+                allocs.append(0.0); labels.append("SELL")
+            else:
+                allocs.append(prev_alloc); labels.append("HOLD")
+        else:
+            alloc = float(np.clip(np.asarray(action).flatten()[0], 0.0, 1.0))
+            allocs.append(alloc)
+            labels.append(None)
 
-    # SAC / PPO continuous
-    alloc = float(np.clip(np.asarray(action).flatten()[0], 0.0, 1.0))
-    if alloc > 0.7:
-        label, color = f"LONG {alloc*100:.0f}%", "#2ca02c"
-    elif alloc > 0.3:
-        label, color = f"PARTIAL {alloc*100:.0f}%", "#ffc107"
+    if not allocs:
+        return {"allocation": prev_alloc, "votes": None, "total_seeds": 0}
+
+    out = {
+        "allocation": float(np.mean(allocs)),
+        "total_seeds": len(allocs),
+    }
+    if algo == "DQN":
+        votes = {"BUY": labels.count("BUY"),
+                 "HOLD": labels.count("HOLD"),
+                 "SELL": labels.count("SELL")}
+        out["votes"] = votes
     else:
-        label, color = "CASH", "#6c757d"
-    return BucketDecision(label, color, alloc, None)
+        out["votes"] = None
+    return out
 
 
-def decide_for_buckets(
+def _direction(prev: float, now: float) -> str:
+    if now > prev + 0.05:
+        return "increase"
+    if now < prev - 0.05:
+        return "decrease"
+    return "hold"
+
+
+def decide_ensemble_for_buckets(
     buckets: list[dict],
-    model_path: str,
+    seeds_paths: list[tuple[int, str]],
     algo: str,
 ) -> list[dict]:
-    """Augment each bucket with an agent decision."""
-    model = load_sb3_model(model_path, algo_hint=algo)
+    """For each bucket run all seeds, thread prev_alloc oldest->newest."""
+    ohlcv_all = _fetch_ohlcv_cached()
     out = []
     prev_alloc = 0.0
-    for b in reversed(buckets):  # oldest first so prev_alloc threads correctly
+    # Oldest first for prev_alloc threading
+    for b in reversed(buckets):
+        bucket_ts = b["bucket_ts"]
+        cutoff = bucket_ts
+        if cutoff.tz is None:
+            cutoff = cutoff.tz_localize("UTC")
+
+        ohlcv = ohlcv_all[ohlcv_all.index <= cutoff].tail(60)
+        if len(ohlcv) < NORMALIZE_WINDOW + 2:
+            out.append({**b, "decision": None,
+                        "error": f"insufficient OHLCV bars ({len(ohlcv)})"})
+            continue
+
         try:
-            bar_ts = b["bucket_ts"].isoformat()
-            ohlcv = ohlcv_up_to(bar_ts, n_bars=60)
-            if len(ohlcv) < NORMALIZE_WINDOW + 1:
-                continue
-            feats = _build_window_features(ohlcv, b["items"])
-            dec = decide(model, algo, feats, prev_alloc=prev_alloc)
-            prev_alloc = dec.allocation
+            features = _build_window_features(ohlcv, b["items"])
+            obs = np.append(features[-30:].flatten(), prev_alloc).astype(np.float32)
+            agg = _ensemble_on_obs(obs, seeds_paths, algo, prev_alloc)
+
+            new_alloc = agg["allocation"]
+            direction = _direction(prev_alloc, new_alloc)
+
+            # P&L: if we have bar AFTER bucket_ts — use it
+            after_bars = ohlcv_all[ohlcv_all.index > cutoff]
+            next_bar_return = None
+            trade_pnl = None
+            if not after_bars.empty and len(ohlcv) >= 1:
+                last_close = float(ohlcv["close"].iloc[-1])
+                next_close = float(after_bars.iloc[0]["close"])
+                if last_close > 0:
+                    next_bar_return = float(np.log(next_close / last_close))
+                    trade_pnl = float(np.exp(new_alloc * next_bar_return) - 1)
+
+            dec = EnsembleDecision(
+                allocation=new_alloc,
+                prev_allocation=prev_alloc,
+                direction=direction,
+                votes=agg["votes"],
+                total_seeds=agg["total_seeds"],
+                next_bar_return=next_bar_return,
+                trade_pnl=trade_pnl,
+            )
             out.append({**b, "decision": dec})
+            prev_alloc = new_alloc
         except Exception as e:  # noqa: BLE001
             out.append({**b, "decision": None, "error": str(e)})
+
     out.reverse()
     return out
+
+
+def compute_portfolio_trajectory(decorated: list[dict],
+                                 initial_capital: float = 10000.0) -> list[dict]:
+    """Compound portfolio value across all buckets from oldest to newest.
+
+    Returns a copy of decorated with 'portfolio_value' added per bucket.
+    """
+    # Walk oldest -> newest
+    ordered = list(reversed(decorated))
+    equity = initial_capital
+    for item in ordered:
+        dec = item.get("decision")
+        if dec is not None and dec.trade_pnl is not None:
+            equity = equity * (1 + dec.trade_pnl)
+        item["portfolio_value"] = equity
+    # Return newest-first
+    return list(reversed(ordered))
