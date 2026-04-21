@@ -13,6 +13,7 @@ import streamlit as st
 
 from dashboard.utils.paths import OOS_DIR, ensure_lib_on_path
 from dashboard.utils import snapshot
+from dashboard.utils.model_catalog import list_model_entries
 
 ensure_lib_on_path()
 from lib.metrics import compute_metrics
@@ -85,12 +86,12 @@ def vs_bh(ci_lower: float, ci_upper: float, bh_sharpe: float) -> str:
     return "overlap"
 
 
-snaps = snapshot.list_snapshots()
-if not snaps:
-    st.error("No snapshots in experiments/.")
+entries = list_model_entries()
+if not entries:
+    st.error("No trained models in experiments/.")
     st.stop()
 
-periods_filter = sorted({p for s in snaps for p in snapshot.list_periods(s)})
+periods_filter = sorted({p for e in entries for p in snapshot.list_periods(e.snapshot)})
 
 # ---- Build comparison rows ----
 rows = []
@@ -98,33 +99,27 @@ for period in periods_filter:
     bh_m = buy_hold_metrics(period)
     bh_sh = bh_m["sharpe_ratio"] if bh_m else float("nan")
     rows.append({
-        "snapshot": "Buy & Hold",
-        "period": period,
-        "algo": "—",
+        "Модель": "Buy & Hold",
+        "Период": period,
         "n": 1,
-        "Sharpe": f"{bh_sh:+.3f}" if bh_m else "—",
-        "95% CI": "—",
         "Return": f"{bh_m['total_return']*100:+.1f}%" if bh_m else "—",
         "MaxDD": f"{bh_m['max_drawdown']*100:.1f}%" if bh_m else "—",
         "vs B&H": "—",
     })
-    for snap in snaps:
-        models = snapshot.discover_models(snap)
-        for algo in sorted(models.keys()):
-            agg = snapshot_row(snap, period, algo)
-            if agg is None:
-                continue
-            rows.append({
-                "snapshot": snap,
-                "period": period,
-                "algo": algo,
-                "n": agg["n"],
-                "Sharpe": f"{agg['sharpe_mean']:+.3f} ± {agg['sharpe_std']:.3f}",
-                "95% CI": f"[{agg['ci_lower']:+.3f}, {agg['ci_upper']:+.3f}]",
-                "Return": f"{agg['return_mean']*100:+.1f}% ± {agg['return_std']*100:.1f}%",
-                "MaxDD": f"{agg['maxdd_mean']*100:.1f}%",
-                "vs B&H": vs_bh(agg["ci_lower"], agg["ci_upper"], bh_sh),
-            })
+    for entry in entries:
+        if period not in snapshot.list_periods(entry.snapshot):
+            continue
+        agg = snapshot_row(entry.snapshot, period, entry.algo)
+        if agg is None:
+            continue
+        rows.append({
+            "Модель": entry.label,
+            "Период": period,
+            "n": agg["n"],
+            "Return": f"{agg['return_mean']*100:+.1f}% ± {agg['return_std']*100:.1f}%",
+            "MaxDD": f"{agg['maxdd_mean']*100:.1f}%",
+            "vs B&H": vs_bh(agg["ci_lower"], agg["ci_upper"], bh_sh),
+        })
 
 df = pd.DataFrame(rows)
 
@@ -146,6 +141,6 @@ st.dataframe(
 )
 
 st.caption(
-    f"{len(snaps)} snapshots · {len(periods_filter)} OOS periods. "
-    "`vs B&H` compares bootstrap 95% CI lower bound to Buy & Hold Sharpe."
+    f"{len(entries)} моделей × {len(periods_filter)} OOS периодов. "
+    "`vs B&H` — сравнение 95% CI Sharpe с Buy & Hold."
 )
