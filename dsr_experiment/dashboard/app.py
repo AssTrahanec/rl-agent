@@ -83,7 +83,7 @@ if cached.empty:
 
 
 # ---- Ensemble over last N buckets ----
-buckets = group_by_bucket(cached, lookback_buckets=15)
+buckets = group_by_bucket(cached, lookback_buckets=30)   # up to 5 days of 4h buckets
 models_avail = snapshot.discover_models(entry.snapshot).get(entry.algo, [])
 seeds_paths = [(m["seed"], m["path"]) for m in models_avail]
 

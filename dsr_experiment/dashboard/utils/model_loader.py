@@ -10,26 +10,33 @@ ensure_lib_on_path()
 
 @st.cache_resource
 def load_sb3_model(model_path: str, algo_hint: Optional[str] = None):
-    """Load a Stable-Baselines3 model from model.zip.
+    """Load a Stable-Baselines3 model from model.zip for inference.
 
-    Mirrors lib/backtest.py::load_model but cached via st.cache_resource.
-    algo_hint ∈ {"SAC","DQN","PPO"} speeds up loading by trying the right
-    class first.
+    Off-policy models (SAC, DQN) serialize their replay buffer shape in the
+    zip. Naive .load() tries to re-allocate the training-size buffer
+    (300k × obs_dim ≈ 3 GB per model). For inference we don't need the
+    buffer at all — override with buffer_size=1 via custom_objects.
     """
     from stable_baselines3 import PPO, SAC, DQN
 
-    order = [PPO, SAC, DQN]
-    if algo_hint == "SAC":
-        order = [SAC, DQN, PPO]
-    elif algo_hint == "DQN":
-        order = [DQN, SAC, PPO]
-    elif algo_hint == "PPO":
-        order = [PPO, SAC, DQN]
+    # custom_objects lets us replace serialized hyperparameters at load time.
+    # For off-policy algos, we shrink the replay buffer to stop the 3GB alloc.
+    custom = {"buffer_size": 1}
 
-    last_err = None
-    for cls in order:
-        try:
+    hint_map = {"SAC": SAC, "DQN": DQN, "PPO": PPO}
+    if algo_hint in hint_map:
+        cls = hint_map[algo_hint]
+        if cls is PPO:
             return cls.load(model_path, device="cpu")
+        return cls.load(model_path, device="cpu", custom_objects=custom)
+
+    # Fallback: try in order, independent attempts.
+    last_err = None
+    for cls in (DQN, SAC, PPO):
+        try:
+            if cls is PPO:
+                return cls.load(model_path, device="cpu")
+            return cls.load(model_path, device="cpu", custom_objects=custom)
         except Exception as e:  # noqa: BLE001
             last_err = e
             continue
