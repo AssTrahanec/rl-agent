@@ -1,4 +1,8 @@
-"""Entry page — comparison of experiment snapshots."""
+"""Strategy Live — main page.
+
+Single story: what does the agent decide right now on the freshest news,
+and how would this strategy have performed over the recent few days.
+"""
 import sys
 from pathlib import Path
 
@@ -10,137 +14,323 @@ if str(_PROJECT_ROOT) not in sys.path:
 import numpy as np
 import pandas as pd
 import streamlit as st
+import plotly.graph_objects as go
 
-from dashboard.utils.paths import OOS_DIR, ensure_lib_on_path
+from dashboard.utils.paths import ensure_lib_on_path
 from dashboard.utils import snapshot
 from dashboard.utils.model_catalog import list_model_entries
+from dashboard.utils.news_feed import (
+    refresh_feed, load_cached_feed, group_by_bucket,
+)
+from dashboard.utils.feed_decisions import (
+    decide_ensemble_for_buckets, compute_portfolio_trajectory,
+)
 
 ensure_lib_on_path()
-from lib.metrics import compute_metrics
-from lib.bootstrap import bootstrap_ci
 
 
-st.set_page_config(page_title="RL Trading — Overview", layout="wide")
-
-st.title("Overview")
-
-
-@st.cache_data
-def buy_hold_metrics(period: str, warmup: int = 30, tx_cost: float = 0.001):
-    path = OOS_DIR / f"{period}_features.parquet"
-    if not path.exists():
-        return None
-    df = pd.read_parquet(path)
-    prices = df["raw_close"].values[warmup:]
-    if len(prices) < 2:
-        return None
-    log_r = np.log(prices[1:] / prices[:-1])
-    bh = np.exp(log_r) - 1
-    bh[0] -= tx_cost
-    bh[-1] -= tx_cost
-    return compute_metrics(bh)
+st.set_page_config(page_title="Стратегия — live", layout="wide")
+st.title("Стратегия в реальном времени")
 
 
-@st.cache_data
-def snapshot_row(snap: str, period: str, algo: str) -> dict:
-    """Aggregate Sharpe/Return/MaxDD mean±std and 95% CI for one (snap,period,algo)."""
-    models = snapshot.discover_models(snap)
-    seeds = [e["seed"] for e in models.get(algo, [])]
-    if not seeds:
-        return None
-    returns_list = []
-    metrics_list = []
-    for s in seeds:
-        try:
-            d = snapshot.load_seed_npz(snap, period, algo, s)
-        except FileNotFoundError:
-            continue
-        returns_list.append(d["daily_returns"])
-        metrics_list.append(compute_metrics(d["daily_returns"]))
-    if not metrics_list:
-        return None
-    sh = np.array([m["sharpe_ratio"] for m in metrics_list])
-    ret = np.array([m["total_return"] for m in metrics_list])
-    dd = np.array([m["max_drawdown"] for m in metrics_list])
-    ci = bootstrap_ci(returns_list, n_bootstrap=2000, confidence=0.95, seed=42)
-    return {
-        "n": len(metrics_list),
-        "sharpe_mean": float(sh.mean()),
-        "sharpe_std": float(sh.std()),
-        "ci_lower": ci["sharpe_ratio"]["ci_lower"],
-        "ci_upper": ci["sharpe_ratio"]["ci_upper"],
-        "return_mean": float(ret.mean()),
-        "return_std": float(ret.std()),
-        "maxdd_mean": float(dd.mean()),
-    }
-
-
-def vs_bh(ci_lower: float, ci_upper: float, bh_sharpe: float) -> str:
-    """Compare CI to B&H: return 'higher' / 'overlap' / 'lower'."""
-    if np.isnan(bh_sharpe):
-        return "n/a"
-    if ci_lower > bh_sharpe:
-        return "higher"
-    if ci_upper < bh_sharpe:
-        return "lower"
-    return "overlap"
-
-
+# ---- Model selector ----
 entries = list_model_entries()
 if not entries:
-    st.error("No trained models in experiments/.")
+    st.error("Нет обученных моделей.")
     st.stop()
 
-periods_filter = sorted({p for e in entries for p in snapshot.list_periods(e.snapshot)})
-
-# ---- Build comparison rows ----
-rows = []
-for period in periods_filter:
-    bh_m = buy_hold_metrics(period)
-    bh_sh = bh_m["sharpe_ratio"] if bh_m else float("nan")
-    rows.append({
-        "Модель": "Buy & Hold",
-        "Период": period,
-        "n": 1,
-        "Return": f"{bh_m['total_return']*100:+.1f}%" if bh_m else "—",
-        "MaxDD": f"{bh_m['max_drawdown']*100:.1f}%" if bh_m else "—",
-        "vs B&H": "—",
-    })
-    for entry in entries:
-        if period not in snapshot.list_periods(entry.snapshot):
-            continue
-        agg = snapshot_row(entry.snapshot, period, entry.algo)
-        if agg is None:
-            continue
-        rows.append({
-            "Модель": entry.label,
-            "Период": period,
-            "n": agg["n"],
-            "Return": f"{agg['return_mean']*100:+.1f}% ± {agg['return_std']*100:.1f}%",
-            "MaxDD": f"{agg['maxdd_mean']*100:.1f}%",
-            "vs B&H": vs_bh(agg["ci_lower"], agg["ci_upper"], bh_sh),
-        })
-
-df = pd.DataFrame(rows)
-
-
-def style_vs(val):
-    if val == "higher":
-        return "background-color: #d4edda; color: #155724"
-    if val == "lower":
-        return "background-color: #f8d7da; color: #721c24"
-    if val == "overlap":
-        return "background-color: #fff3cd; color: #856404"
-    return ""
-
-
-st.dataframe(
-    df.style.map(style_vs, subset=["vs B&H"]),
-    width="stretch",
-    hide_index=True,
+default_label = next(
+    (e.label for e in entries if "tuned + 10 seeds" in e.label and e.algo == "DQN"),
+    entries[0].label,
 )
+labels = [e.label for e in entries]
 
+top_cols = st.columns([4, 1])
+with top_cols[0]:
+    picked = st.selectbox("Модель (ансамбль всех сидов)", labels,
+                          index=labels.index(default_label))
+    entry = next(e for e in entries if e.label == picked)
+with top_cols[1]:
+    st.write("")
+    st.write("")
+    do_refresh = st.button("Обновить", use_container_width=True)
+
+
+# ---- Refresh news if stale ----
+cached = load_cached_feed()
+now = pd.Timestamp.utcnow()
+now_utc = now if now.tz is not None else now.tz_localize("UTC")
+
+need_refresh = cached.empty or do_refresh
+if not need_refresh and not cached.empty:
+    latest_ts = pd.to_datetime(cached["ts"].max(), utc=True)
+    need_refresh = (now_utc - latest_ts) > pd.Timedelta(hours=4)
+
+if need_refresh:
+    with st.spinner("Тяну RSS, считаю sentiment..."):
+        try:
+            cached, n_new = refresh_feed(force=do_refresh)
+            if n_new > 0:
+                st.toast(f"Добавлено {n_new} новостей.", icon="✓")
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Не удалось обновить: {e}")
+
+if cached.empty:
+    st.warning("Лента пустая. Нажми «Обновить».")
+    st.stop()
+
+
+# ---- Run ensemble over last N buckets ----
+buckets = group_by_bucket(cached, lookback_buckets=15)
+models_avail = snapshot.discover_models(entry.snapshot).get(entry.algo, [])
+seeds_paths = [(m["seed"], m["path"]) for m in models_avail]
+
+with st.spinner(f"{len(seeds_paths)} моделей анализируют {len(buckets)} окон..."):
+    decorated = decide_ensemble_for_buckets(buckets, seeds_paths, entry.algo)
+    decorated = compute_portfolio_trajectory(decorated, initial_capital=10000.0)
+
+if not decorated:
+    st.warning("Нет данных для анализа.")
+    st.stop()
+
+
+# ========================================================================
+# SECTION 1 — ТЕКУЩЕЕ РЕШЕНИЕ (самое свежее окно)
+# ========================================================================
+
+current = decorated[0]   # newest bucket
+current_dec = current.get("decision")
+
+st.divider()
+hdr_cols = st.columns([3, 2])
+with hdr_cols[0]:
+    st.subheader("Решение агента сейчас")
+    st.caption(f"Окно {current['bucket_ts'].strftime('%Y-%m-%d %H:%M UTC')}")
+
+if current_dec is None:
+    st.warning(f"Решение не получено: {current.get('error', '—')}")
+else:
+    # One large decision card
+    alloc_pct = int(current_dec.allocation * 100)
+    prev_pct = int(current_dec.prev_allocation * 100)
+
+    if current_dec.direction == "increase":
+        action_verb = "ПОКУПАТЬ"
+        action_color = "#2ca02c"
+        arrow = "▲"
+    elif current_dec.direction == "decrease":
+        action_verb = "ПРОДАВАТЬ"
+        action_color = "#d62728"
+        arrow = "▼"
+    else:
+        action_verb = "ДЕРЖАТЬ"
+        action_color = "#6c757d"
+        arrow = "●"
+
+    votes_line = ""
+    if current_dec.votes:
+        # Dominant vote
+        dom = max(current_dec.votes.items(), key=lambda kv: kv[1])
+        votes_line = f"{dom[1]} из {current_dec.total_seeds} моделей согласны"
+    else:
+        votes_line = f"{current_dec.total_seeds} моделей, средняя доля {alloc_pct}%"
+
+    st.markdown(
+        f"""
+        <div style="padding:28px;border-radius:12px;background:{action_color};color:white;">
+            <div style="font-size:14px;opacity:0.8;margin-bottom:6px;">РЕКОМЕНДАЦИЯ</div>
+            <div style="font-size:44px;font-weight:800;margin-bottom:8px;">
+                {arrow} {action_verb}
+            </div>
+            <div style="font-size:20px;opacity:0.95;">
+                позиция BTC: {prev_pct}% → <b>{alloc_pct}%</b>
+            </div>
+            <div style="font-size:14px;margin-top:10px;opacity:0.85;">
+                {votes_line}
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Why — input signals
+    st.markdown("**Почему**")
+    why_cols = st.columns(3)
+    why_cols[0].metric("Новостей в окне", current["n_news"])
+    why_cols[1].metric("Средний sentiment", f"{current['sentiment_mean']:+.2f}")
+    if current_dec.votes:
+        buy_n = current_dec.votes.get("BUY", 0)
+        sell_n = current_dec.votes.get("SELL", 0)
+        hold_n = current_dec.votes.get("HOLD", 0)
+        why_cols[2].metric("Голоса BUY/HOLD/SELL", f"{buy_n}/{hold_n}/{sell_n}")
+    else:
+        why_cols[2].metric("Средняя доля ансамбля", f"{alloc_pct}%")
+
+    # Show top news in the current window
+    if current["items"]:
+        with st.expander(f"Свежие новости этого окна ({current['n_news']})", expanded=True):
+            for item in current["items"][:5]:
+                s_color = (
+                    "#2ca02c" if item["sentiment_label"] == "positive"
+                    else "#d62728" if item["sentiment_label"] == "negative"
+                    else "#6c757d"
+                )
+                ts_str = pd.Timestamp(item["ts"]).strftime("%H:%M")
+                st.markdown(
+                    f'<div style="margin-bottom:8px;">'
+                    f'<span style="display:inline-block;padding:2px 6px;border-radius:3px;'
+                    f'background:{s_color};color:white;font-size:11px;font-weight:600;'
+                    f'margin-right:6px;">{item["sentiment_score"]:+.2f}</span>'
+                    f'<a href="{item["link"]}" target="_blank">{item["title"]}</a>'
+                    f'<span style="color:#888;font-size:12px;">  — {item["source"]}, {ts_str}</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
+
+# ========================================================================
+# SECTION 2 — ЧТО БЫ БЫЛО (equity на последних окнах)
+# ========================================================================
+
+st.divider()
+st.subheader("Результат стратегии за последние окна")
 st.caption(
-    f"{len(entries)} моделей × {len(periods_filter)} OOS периодов. "
-    "`vs B&H` — сравнение 95% CI Sharpe с Buy & Hold."
+    "Капитал $10 000 в начале ленты. Агент торгует каждые 4 часа "
+    "по тем же сигналам что выше. Сравнение с Buy & Hold."
 )
+
+# Build equity curves
+ordered = list(reversed(decorated))   # oldest first
+timestamps = [b["bucket_ts"] for b in ordered]
+agent_equity = [b.get("portfolio_value", 10000.0) for b in ordered]
+
+# Buy & Hold — using price from ohlcv near bucket timestamps
+from dashboard.utils.feed_decisions import _fetch_ohlcv_cached
+ohlcv_all = _fetch_ohlcv_cached()
+bh_equity = [10000.0]
+prev_price = None
+for i, ts in enumerate(timestamps):
+    cutoff = ts if ts.tz is not None else ts.tz_localize("UTC")
+    window = ohlcv_all[ohlcv_all.index <= cutoff]
+    if window.empty:
+        bh_equity.append(bh_equity[-1])
+        continue
+    price = float(window.iloc[-1]["close"])
+    if prev_price is None:
+        prev_price = price
+        continue
+    ret = price / prev_price - 1
+    bh_equity.append(bh_equity[-1] * (1 + ret))
+    prev_price = price
+# Align lengths
+if len(bh_equity) > len(timestamps):
+    bh_equity = bh_equity[:len(timestamps)]
+elif len(bh_equity) < len(timestamps):
+    pad = timestamps[:len(bh_equity)]
+    timestamps_bh = pad
+else:
+    timestamps_bh = timestamps
+
+final_agent = agent_equity[-1] if agent_equity else 10000.0
+final_bh = bh_equity[-1] if bh_equity else 10000.0
+agent_ret = (final_agent / 10000.0 - 1) * 100
+bh_ret = (final_bh / 10000.0 - 1) * 100
+
+k1, k2, k3 = st.columns(3)
+k1.metric("Стратегия агента", f"${final_agent:,.0f}",
+          delta=f"{agent_ret:+.2f}%")
+k2.metric("Buy & Hold", f"${final_bh:,.0f}",
+          delta=f"{bh_ret:+.2f}%")
+k3.metric("Преимущество агента",
+          f"{(agent_ret - bh_ret):+.2f}%",
+          delta="от Buy & Hold", delta_color="off")
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(
+    x=timestamps, y=agent_equity, mode="lines",
+    line=dict(color="#2ca02c", width=3),
+    name="Агент",
+))
+fig.add_trace(go.Scatter(
+    x=timestamps[:len(bh_equity)], y=bh_equity, mode="lines",
+    line=dict(color="black", width=2, dash="dash"),
+    name="Buy & Hold",
+))
+fig.update_layout(
+    height=360,
+    yaxis_title="Капитал, $",
+    xaxis_title=None,
+    hovermode="x unified",
+    margin=dict(t=20, l=50, r=20, b=40),
+    legend=dict(orientation="h", yanchor="top", y=-0.12, x=0.5, xanchor="center"),
+)
+st.plotly_chart(fig, width="stretch")
+
+
+# ========================================================================
+# SECTION 3 — ЛЕНТА РЕШЕНИЙ (компактная)
+# ========================================================================
+
+st.divider()
+st.subheader("История решений")
+
+for b in decorated[1:]:   # skip current (already shown above)
+    dec = b.get("decision")
+    ts_str = b["bucket_ts"].strftime("%Y-%m-%d %H:%M UTC")
+
+    if dec is None:
+        with st.container(border=True):
+            st.markdown(f"**{ts_str}** · ошибка: {b.get('error', '—')}")
+        continue
+
+    # Compact one-row layout
+    if dec.direction == "increase":
+        action_icon = "▲ BUY"
+        action_color = "#2ca02c"
+    elif dec.direction == "decrease":
+        action_icon = "▼ SELL"
+        action_color = "#d62728"
+    else:
+        action_icon = "● HOLD"
+        action_color = "#6c757d"
+
+    if dec.trade_pnl is not None:
+        pnl_pct = dec.trade_pnl * 100
+        pnl_color = "#2ca02c" if dec.trade_pnl > 0 else ("#d62728" if dec.trade_pnl < 0 else "#6c757d")
+        pnl_text = f'<span style="color:{pnl_color};font-weight:700;">{pnl_pct:+.2f}%</span>'
+    else:
+        pnl_text = '<span style="color:#888;">—</span>'
+
+    votes_short = ""
+    if dec.votes:
+        dom = max(dec.votes.items(), key=lambda kv: kv[1])
+        votes_short = f"{dom[1]}/{dec.total_seeds}"
+    else:
+        votes_short = f"{int(dec.allocation*100)}%"
+
+    with st.container(border=True):
+        cols = st.columns([2, 1, 1, 1, 1])
+        cols[0].markdown(f"**{ts_str}**")
+        cols[1].markdown(
+            f'<span style="background:{action_color};color:white;padding:4px 10px;'
+            f'border-radius:4px;font-weight:600;">{action_icon}</span>',
+            unsafe_allow_html=True,
+        )
+        cols[2].markdown(f"{b['n_news']} новостей · {b['sentiment_mean']:+.2f}")
+        cols[3].markdown(f"согласие: **{votes_short}**")
+        cols[4].markdown(f"P&L: {pnl_text}", unsafe_allow_html=True)
+
+        with st.expander("Новости окна"):
+            for item in b["items"]:
+                s_color = (
+                    "#2ca02c" if item["sentiment_label"] == "positive"
+                    else "#d62728" if item["sentiment_label"] == "negative"
+                    else "#6c757d"
+                )
+                ts_sub = pd.Timestamp(item["ts"]).strftime("%H:%M")
+                st.markdown(
+                    f'<span style="color:{s_color};font-weight:600;">[{item["sentiment_score"]:+.2f}]</span> '
+                    f'<a href="{item["link"]}" target="_blank">{item["title"]}</a> '
+                    f'<span style="color:#888;font-size:12px;">— {item["source"]} {ts_sub}</span>',
+                    unsafe_allow_html=True,
+                )
