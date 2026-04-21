@@ -1,8 +1,12 @@
-"""News feed — fetch RSS, bucket by 4h, score via FinBERT, run through model."""
+"""News feed — fetch NewsAPI (with 5-day archive) + RSS fallback,
+bucket by 4h, score via FinBERT, run through model.
+"""
 import hashlib
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterable
 
 import numpy as np
 import pandas as pd
@@ -10,6 +14,19 @@ import streamlit as st
 
 from dashboard.utils.paths import ROOT, ensure_lib_on_path
 
+
+# Load .env once at import time
+try:
+    from dotenv import load_dotenv
+    load_dotenv(ROOT / ".env")
+except ImportError:
+    pass
+
+
+NEWSAPI_KEY = os.environ.get("NEWSAPI_KEY", "").strip()
+NEWSAPI_URL = "https://newsapi.org/v2/everything"
+# NewsAPI free tier: up to 100 articles/request, archive ≤30 days.
+NEWSAPI_LOOKBACK_DAYS = 5
 
 RSS_SOURCES = [
     ("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/?outputType=xml"),
@@ -61,7 +78,6 @@ def fetch_rss_once() -> list[NewsItem]:
             title = getattr(e, "title", "") or ""
             summary = getattr(e, "summary", "") or getattr(e, "description", "") or ""
             link = getattr(e, "link", "") or ""
-            # Parse published time
             ts = None
             for key in ("published_parsed", "updated_parsed"):
                 raw = getattr(e, key, None)
@@ -84,6 +100,127 @@ def fetch_rss_once() -> list[NewsItem]:
                 uid=_uid(title, link),
             ))
     return out
+
+
+def _newsapi_page(page: int, from_dt: str) -> dict:
+    import requests
+    params = {
+        "q": "bitcoin OR btc OR cryptocurrency",
+        "from": from_dt,
+        "language": "en",
+        "sortBy": "publishedAt",
+        "pageSize": 100,
+        "page": page,
+        "apiKey": NEWSAPI_KEY,
+    }
+    try:
+        r = requests.get(NEWSAPI_URL, params=params, timeout=15)
+        r.raise_for_status()
+        return r.json()
+    except Exception:  # noqa: BLE001
+        return {"status": "error", "articles": []}
+
+
+def fetch_newsapi_once(lookback_days: int = NEWSAPI_LOOKBACK_DAYS) -> list[NewsItem]:
+    """Fetch Bitcoin news from NewsAPI with N-day archive.
+
+    Uses pagination — free tier caps at totalResults ≤ 100 per request window
+    but you can page through for a narrower window. We instead walk the date
+    range day-by-day, asking for the most-recent-first slice of each day
+    (up to 100 per day is plenty for BTC news).
+
+    Returns [] if no API key or request fails.
+    """
+    if not NEWSAPI_KEY:
+        return []
+
+    now_utc = pd.Timestamp.utcnow()
+    if now_utc.tz is None:
+        now_utc = now_utc.tz_localize("UTC")
+
+    out: list[NewsItem] = []
+    seen_uids: set[str] = set()
+
+    # Walk each day backward. NewsAPI returns newest-first for that slice.
+    for days_back in range(lookback_days):
+        day_end = now_utc - pd.Timedelta(days=days_back)
+        day_start = day_end - pd.Timedelta(days=1)
+        from_iso = day_start.strftime("%Y-%m-%dT%H:%M:%S")
+        to_iso = day_end.strftime("%Y-%m-%dT%H:%M:%S")
+
+        import requests
+        params = {
+            "q": "bitcoin OR btc OR cryptocurrency",
+            "from": from_iso,
+            "to": to_iso,
+            "language": "en",
+            "sortBy": "publishedAt",
+            "pageSize": 100,
+            "apiKey": NEWSAPI_KEY,
+        }
+        try:
+            r = requests.get(NEWSAPI_URL, params=params, timeout=15)
+            r.raise_for_status()
+            data = r.json()
+        except Exception:  # noqa: BLE001
+            continue
+
+        if data.get("status") != "ok":
+            continue
+
+        for art in data.get("articles", []):
+            title = art.get("title") or ""
+            summary = art.get("description") or art.get("content") or ""
+            link = art.get("url") or ""
+            source_obj = art.get("source") or {}
+            source = source_obj.get("name") or "NewsAPI"
+            published = art.get("publishedAt")
+            if not published:
+                continue
+            try:
+                ts = pd.Timestamp(published)
+                if ts.tz is None:
+                    ts = ts.tz_localize("UTC")
+                else:
+                    ts = ts.tz_convert("UTC")
+            except Exception:  # noqa: BLE001
+                continue
+            if not _item_matches_btc(title, summary):
+                continue
+            uid = _uid(title, link)
+            if uid in seen_uids:
+                continue
+            seen_uids.add(uid)
+            out.append(NewsItem(
+                ts=ts,
+                title=title.strip(),
+                summary=re.sub(r"<[^>]+>", "", summary).strip()[:500],
+                source=source,
+                link=link,
+                uid=uid,
+            ))
+    return out
+
+
+def fetch_news_once() -> tuple[list[NewsItem], str]:
+    """Prefer NewsAPI (5-day archive). Fallback to RSS (≤48h).
+
+    Returns (items, source_tag) where tag ∈ {"newsapi", "rss", "newsapi+rss"}.
+    """
+    newsapi_items = fetch_newsapi_once()
+    rss_items = fetch_rss_once()
+
+    if newsapi_items and rss_items:
+        # Merge, dedup by uid (title+link hash)
+        by_uid: dict[str, NewsItem] = {}
+        for it in newsapi_items + rss_items:
+            by_uid.setdefault(it.uid, it)
+        return list(by_uid.values()), "newsapi+rss"
+    if newsapi_items:
+        return newsapi_items, "newsapi"
+    if rss_items:
+        return rss_items, "rss"
+    return [], "none"
 
 
 # ---------- Bucket by 4h ----------
@@ -167,24 +304,24 @@ def merge_new(cached: pd.DataFrame, fresh: list[dict]) -> pd.DataFrame:
     return merged
 
 
-def refresh_feed(force: bool = False) -> tuple[pd.DataFrame, int]:
-    """Fetch RSS, score new items, merge into cache.
+def refresh_feed(force: bool = False) -> tuple[pd.DataFrame, int, str]:
+    """Fetch NewsAPI+RSS, score new items, merge into cache.
 
-    Returns (updated_df, num_new_items).
+    Returns (updated_df, num_new_items, source_tag).
     """
     cached = load_cached_feed()
-    items = fetch_rss_once()
+    items, source_tag = fetch_news_once()
     if cached.empty:
         fresh_items = items
     else:
         seen = set(cached["uid"])
         fresh_items = [it for it in items if it.uid not in seen]
     if not fresh_items and not force:
-        return cached, 0
+        return cached, 0, source_tag
     scored = score_items(fresh_items)
     merged = merge_new(cached, scored)
     save_feed(merged)
-    return merged, len(scored)
+    return merged, len(scored), source_tag
 
 
 # ---------- 4h aggregated view ----------

@@ -65,11 +65,15 @@ if not need_refresh and not cached.empty:
     need_refresh = (now_utc - latest_ts) > pd.Timedelta(hours=4)
 
 if need_refresh:
-    with st.spinner("Тяну RSS, считаю sentiment..."):
+    with st.spinner("Тяну новости (NewsAPI архив + RSS), считаю sentiment..."):
         try:
-            cached, n_new = refresh_feed(force=do_refresh)
+            cached, n_new, source_tag = refresh_feed(force=do_refresh)
             if n_new > 0:
-                st.toast(f"Добавлено {n_new} новостей.", icon="✓")
+                src_label = {"newsapi": "NewsAPI (5 дней архива)",
+                             "rss": "RSS (только свежие)",
+                             "newsapi+rss": "NewsAPI + RSS",
+                             "none": "никаких источников"}.get(source_tag, source_tag)
+                st.toast(f"Добавлено {n_new} новостей ({src_label}).", icon="✓")
         except Exception as e:  # noqa: BLE001
             st.error(f"Не удалось обновить: {e}")
 

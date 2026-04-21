@@ -7,3 +7,7 @@ __pycache__/
 
 # Dashboard runtime cache
 dashboard/cache/
+
+# Environment variables (API keys)
+.env
+.env.local
