@@ -27,8 +27,12 @@ ensure_lib_on_path()
 
 TX_COST = 0.001   # matches env.tx_cost
 
-st.set_page_config(page_title="Стратегия — live", layout="wide")
-st.title("Стратегия в реальном времени")
+st.set_page_config(page_title="Торговый ассистент", layout="wide")
+st.title("Торговый ассистент для BTC")
+st.caption(
+    "Модель читает свежие новости и движения цены, "
+    "и каждые 4 часа даёт совет: покупать, продавать или ничего не менять."
+)
 
 
 # ---- Model selector ----
@@ -45,13 +49,18 @@ labels = [e.label for e in entries]
 
 top_cols = st.columns([4, 1])
 with top_cols[0]:
-    picked = st.selectbox("Модель (ансамбль всех сидов)", labels,
-                          index=labels.index(default_label))
+    picked = st.selectbox(
+        "Какой моделью пользоваться",
+        labels,
+        index=labels.index(default_label),
+        help="Каждая модель — это ансамбль из 10 обученных сетей. "
+             "Для совета берётся голосование всех 10.",
+    )
     entry = next(e for e in entries if e.label == picked)
 with top_cols[1]:
     st.write("")
     st.write("")
-    do_refresh = st.button("Обновить", use_container_width=True)
+    do_refresh = st.button("Подтянуть свежие новости", use_container_width=True)
 
 
 # ---- Refresh news if stale ----
@@ -104,43 +113,44 @@ current = decorated[0]
 current_dec = current.get("decision")
 
 st.divider()
-st.subheader("Решение агента сейчас")
-st.caption(f"Окно {current['bucket_ts'].strftime('%Y-%m-%d %H:%M UTC')}")
+st.subheader("Что модель советует сейчас")
+st.caption(f"Последний интервал: {current['bucket_ts'].strftime('%d %B, %H:%M UTC')}")
 
 if current_dec is None:
-    st.warning(f"Решение не получено: {current.get('error', '—')}")
+    st.warning(f"Модель не смогла дать ответ: {current.get('error', '—')}")
 else:
     alloc_pct = int(current_dec.allocation * 100)
     prev_pct = int(current_dec.prev_allocation * 100)
 
     if current_dec.direction == "increase":
-        action_verb = "ПОКУПАТЬ"
+        action_verb = "Покупать BTC"
         action_color = "#2ca02c"
         arrow = "▲"
     elif current_dec.direction == "decrease":
-        action_verb = "ПРОДАВАТЬ"
+        action_verb = "Продавать BTC"
         action_color = "#d62728"
         arrow = "▼"
     else:
-        action_verb = "ДЕРЖАТЬ"
+        action_verb = "Ничего не менять"
         action_color = "#6c757d"
         arrow = "●"
 
     if current_dec.votes:
-        dom = max(current_dec.votes.items(), key=lambda kv: kv[1])
-        votes_line = f"{dom[1]} из {current_dec.total_seeds} моделей согласны"
+        dom_label, dom_count = max(current_dec.votes.items(), key=lambda kv: kv[1])
+        dom_word = {"BUY": "за покупку", "SELL": "за продажу", "HOLD": "за удержание"}[dom_label]
+        votes_line = f"{dom_count} из {current_dec.total_seeds} моделей проголосовали {dom_word}"
     else:
-        votes_line = f"{current_dec.total_seeds} моделей, средняя доля {alloc_pct}%"
+        votes_line = f"Из 10 моделей средняя доля в BTC получилась {alloc_pct}%"
 
     st.markdown(
         f"""
         <div style="padding:28px;border-radius:12px;background:{action_color};color:white;">
-            <div style="font-size:14px;opacity:0.8;margin-bottom:6px;">РЕКОМЕНДАЦИЯ</div>
-            <div style="font-size:44px;font-weight:800;margin-bottom:8px;">
+            <div style="font-size:14px;opacity:0.8;margin-bottom:6px;">Совет</div>
+            <div style="font-size:40px;font-weight:800;margin-bottom:8px;">
                 {arrow} {action_verb}
             </div>
-            <div style="font-size:20px;opacity:0.95;">
-                позиция в BTC: {prev_pct}% → <b>{alloc_pct}%</b>
+            <div style="font-size:18px;opacity:0.95;">
+                Рекомендуемая доля BTC в портфеле: {prev_pct}% → <b>{alloc_pct}%</b>
             </div>
             <div style="font-size:14px;margin-top:10px;opacity:0.85;">
                 {votes_line}
@@ -150,20 +160,32 @@ else:
         unsafe_allow_html=True,
     )
 
-    st.markdown("**На чём основано**")
+    st.markdown("**Откуда такое решение**")
     why_cols = st.columns(3)
-    why_cols[0].metric("Новостей в окне", current["n_news"])
-    why_cols[1].metric("Средний sentiment", f"{current['sentiment_mean']:+.2f}")
+    why_cols[0].metric("Свежих новостей", current["n_news"])
+
+    mean_s = current["sentiment_mean"]
+    if mean_s > 0.15:
+        mood = "позитивный"
+    elif mean_s < -0.15:
+        mood = "негативный"
+    else:
+        mood = "нейтральный"
+    why_cols[1].metric("Настроение новостей", mood, delta=f"оценка {mean_s:+.2f}")
+
     if current_dec.votes:
         buy_n = current_dec.votes.get("BUY", 0)
         sell_n = current_dec.votes.get("SELL", 0)
         hold_n = current_dec.votes.get("HOLD", 0)
-        why_cols[2].metric("Голоса BUY/HOLD/SELL", f"{buy_n}/{hold_n}/{sell_n}")
+        why_cols[2].metric(
+            "Голосование 10 моделей",
+            f"{buy_n} покупать · {hold_n} держать · {sell_n} продавать",
+        )
     else:
-        why_cols[2].metric("Средняя доля ансамбля", f"{alloc_pct}%")
+        why_cols[2].metric("Средняя доля BTC", f"{alloc_pct}%")
 
     if current["items"]:
-        with st.expander(f"Новости окна ({current['n_news']})", expanded=False):
+        with st.expander(f"Свежие новости ({current['n_news']} штук)", expanded=False):
             for item in current["items"][:8]:
                 s_color = (
                     "#2ca02c" if item["sentiment_label"] == "positive"
@@ -188,41 +210,44 @@ else:
 # ========================================================================
 
 st.divider()
-with st.expander("Как это понимать — контекст и ограничения", expanded=False):
+with st.expander("Как работает эта модель", expanded=False):
     st.markdown(
         """
-        **Что делает агент**
+        **Что она делает**
 
-        Каждые 4 часа модель смотрит на последние 30 4h-баров цены BTC,
-        свежие новости этого окна и принимает решение о доле капитала в BTC.
+        Каждые 4 часа модель смотрит на цену BTC за последние 5 дней и
+        свежие новости, и даёт совет — какую долю капитала держать в BTC
+        (остальное — в наличных). Проще говоря: **сейчас покупать, продавать
+        или ничего не менять**.
 
-        **Что такое ансамбль**
+        **Почему 10 моделей, а не одна**
 
-        Мы обучили 10 независимых моделей с разной инициализацией весов
-        (стандарт RL-литературы, Henderson et al. 2018). Финальное решение —
-        голосование ансамбля. Если 8 из 10 согласны — уверенное решение;
-        если голоса разделились поровну — слабый сигнал.
+        Мы обучили 10 одинаковых сетей на одинаковых данных, но с разным
+        случайным стартом. Это стандартный приём против «везения одного
+        запуска» (Henderson et al. 2018). Финальный совет — **голосование
+        ансамбля**: если 8 из 10 говорят «покупать» — решение уверенное,
+        если голоса разделились — сигнал слабый.
 
-        **SAC vs DQN**
+        **Чем отличаются DQN и SAC**
 
-        - **DQN** — discrete action: Hold / Buy (100% в BTC) / Sell (100% в cash).
-          Каждая смена — полный переход, средних позиций нет.
-        - **SAC** — continuous: любая доля 0..1. Плавные перекладывания.
+        - **DQN** — может только полностью входить или выходить из BTC.
+          Три варианта: купить всё, продать всё, ничего не делать.
+        - **SAC** — может держать любую долю от 0% до 100%. Плавные переходы.
 
-        На наших данных **DQN обыгрывает SAC и Buy & Hold** по Sharpe на OOS 2025
-        (см. вкладку Валидация). Причина: при одном активе дробные позиции
-        создают больше transaction cost без выгоды — discrete решения чище.
-        Это согласуется с литературой 2024-2025 (Jurnal Mandiri, MarketMind).
+        На нашей валидации **DQN оказался лучше** — на одном активе (BTC)
+        дробные доли создают лишние комиссии без выгоды, а резкие полные
+        покупки/продажи работают чище.
 
-        **Ограничения**
+        **Важные оговорки**
 
-        - **Long-only**: агент или в BTC, или в cash. Короткие позиции не
-          моделируются — на спотовом рынке их нет, а на perpetual funding rate
-          делает шорты невыгодными (проверено в экспериментах, провал PPO).
-        - **Обучение до 2023-12**: модель не видела 2024-H2 и позже. OOS
-          валидация проведена на 2024-2025.
-        - **Транзакционные издержки 0.1% на смену позиции** учтены в обучении.
-        - **Binance spot только**: без маржинальной торговли.
+        - **Только покупка и кэш.** Коротких позиций (ставок на падение) нет —
+          на споте их не бывает, а на фьючерсах ставки за удержание шорта
+          делают их невыгодными (мы проверяли).
+        - **Модель обучена на данных 2020-2023.** На новых данных 2024-2025
+          она показала себя хорошо (смотри «Валидация»), но события последних
+          месяцев напрямую она не видела.
+        - **Комиссии биржи 0.1% за операцию** учтены при обучении.
+        - **Spot-торговля на Binance.** Без плеча и маржинальной торговли.
         """
     )
 
@@ -232,7 +257,11 @@ with st.expander("Как это понимать — контекст и огр�
 # ========================================================================
 
 st.divider()
-st.subheader("Результат стратегии за последние окна")
+st.subheader(f"Результат за последние {int(len(decorated) * 4 / 24)} дней")
+st.caption(
+    "Сравнение: как бы рос капитал если следовать советам модели vs "
+    "просто купить BTC в начале периода и держать."
+)
 
 ordered = list(reversed(decorated))
 timestamps = [b["bucket_ts"] for b in ordered]
@@ -281,16 +310,16 @@ period_days = period_hours / 24
 
 k1, k2, k3, k4 = st.columns(4)
 k1.metric(
-    "Стратегия агента",
+    "По советам модели",
     f"{agent_ret_pct:+.2f}%",
-    delta=f"{advantage_pct:+.2f}% vs B&H",
+    delta=f"{advantage_pct:+.2f}% к пассивной стратегии",
 )
-k2.metric("Buy & Hold", f"{bh_ret_pct:+.2f}%")
-k3.metric("Сделок (смен позиции)", f"{n_switches}")
+k2.metric("Если просто держать BTC", f"{bh_ret_pct:+.2f}%")
+k3.metric("Сколько раз покупал/продавал", f"{n_switches}")
 k4.metric(
-    "Издержки на комиссии",
+    "Комиссии биржи",
     f"-{tx_total_pct:.2f}%",
-    help="0.1% × суммарное изменение доли. Уже вычтено из доходности агента.",
+    help="0.1% от объёма каждой операции. Уже учтено в доходности модели.",
 )
 
 # Equity chart
@@ -298,16 +327,16 @@ fig = go.Figure()
 fig.add_trace(go.Scatter(
     x=timestamps, y=[(e - 1) * 100 for e in agent_equity],
     mode="lines", line=dict(color="#2ca02c", width=3),
-    name="Агент",
+    name="По советам модели",
 ))
 fig.add_trace(go.Scatter(
     x=timestamps[:len(bh_equity)], y=[(e - 1) * 100 for e in bh_equity],
     mode="lines", line=dict(color="black", width=2, dash="dash"),
-    name="Buy & Hold",
+    name="Просто держать BTC",
 ))
 fig.update_layout(
     height=340,
-    yaxis_title="Доходность от старта, %",
+    yaxis_title="Прибыль от начала периода, %",
     xaxis_title=None,
     hovermode="x unified",
     margin=dict(t=20, l=50, r=20, b=40),
@@ -329,83 +358,87 @@ if period_days < 14:
 # ========================================================================
 
 st.divider()
-st.subheader("История решений")
-st.caption("Что агент делал каждые 4 часа — и что из этого получилось.")
+st.subheader("Что модель делала последние дни")
+st.caption("Каждая карточка — одно 4-часовое окно. Видно что порекомендовала модель, почему и к чему это привело.")
 
 for b in decorated[1:]:
     dec = b.get("decision")
-    ts_str = b["bucket_ts"].strftime("%d %b, %H:%M UTC")
+    ts_str = b["bucket_ts"].strftime("%d %B, %H:%M UTC")
 
     if dec is None:
-        st.markdown(f"**{ts_str}** · ошибка: {b.get('error', '—')}")
+        st.markdown(f"**{ts_str}** — модель не смогла дать ответ: {b.get('error', '—')}")
         continue
 
-    # Direction & action description
     prev_pct = int(dec.prev_allocation * 100)
     new_pct = int(dec.allocation * 100)
     change_pct = new_pct - prev_pct
 
     if dec.direction == "increase":
-        action_title = f"Купил BTC"
+        action_title = "Совет: покупать BTC"
         action_color = "#2ca02c"
-        action_detail = f"увеличил долю с {prev_pct}% до {new_pct}% (+{change_pct}%)"
+        action_detail = f"Доля BTC выросла с {prev_pct}% до {new_pct}% (+{change_pct}%)"
     elif dec.direction == "decrease":
-        action_title = f"Продал BTC"
+        action_title = "Совет: продавать BTC"
         action_color = "#d62728"
-        action_detail = f"сократил долю с {prev_pct}% до {new_pct}% ({change_pct}%)"
+        action_detail = f"Доля BTC упала с {prev_pct}% до {new_pct}% ({change_pct}%)"
     else:
-        action_title = f"Оставил позицию"
+        action_title = "Совет: ничего не менять"
         action_color = "#6c757d"
-        action_detail = f"доля в BTC: {new_pct}% (без изменений)"
+        action_detail = f"Модель оставила прежнюю долю BTC — {new_pct}%"
 
-    # Vote summary — human-readable
+    # Vote text
     if dec.votes:
         buy_n = dec.votes.get("BUY", 0)
         hold_n = dec.votes.get("HOLD", 0)
         sell_n = dec.votes.get("SELL", 0)
         vote_parts = []
-        if buy_n > 0: vote_parts.append(f"{buy_n} за покупку")
-        if hold_n > 0: vote_parts.append(f"{hold_n} за удержание")
-        if sell_n > 0: vote_parts.append(f"{sell_n} за продажу")
-        vote_text = f"Из 10 моделей: {', '.join(vote_parts)}"
+        if buy_n > 0: vote_parts.append(f"{buy_n} — покупать")
+        if hold_n > 0: vote_parts.append(f"{hold_n} — держать")
+        if sell_n > 0: vote_parts.append(f"{sell_n} — продавать")
+        vote_text = f"10 моделей проголосовали так: {', '.join(vote_parts)}."
     else:
-        vote_text = f"Средняя рекомендуемая доля 10 моделей: {new_pct}%"
+        vote_text = f"Из 10 моделей средняя рекомендация — держать {new_pct}% в BTC."
 
-    # P&L — human-readable
+    # Outcome
     if dec.trade_pnl is not None and dec.next_bar_return is not None:
         price_move_pct = (np.exp(dec.next_bar_return) - 1) * 100
         trade_pct = dec.trade_pnl * 100
         if dec.trade_pnl > 0:
             pnl_color = "#2ca02c"
-            pnl_verb = "заработал"
+            outcome_line = (
+                f'Через 4 часа BTC вырос на <b>+{price_move_pct:.2f}%</b>. '
+                f'Если бы кто-то торговал по совету модели, он бы заработал '
+                f'<b style="color:{pnl_color}">+{trade_pct:.2f}%</b>.'
+                if price_move_pct > 0 else
+                f'Через 4 часа BTC упал на <b>{price_move_pct:.2f}%</b>, '
+                f'но модель была в кэше — заработала '
+                f'<b style="color:{pnl_color}">+{trade_pct:.2f}%</b> на разнице.'
+            )
         elif dec.trade_pnl < 0:
             pnl_color = "#d62728"
-            pnl_verb = "потерял"
+            outcome_line = (
+                f'Через 4 часа BTC <b>{price_move_pct:+.2f}%</b>. '
+                f'Совет не оправдался — потеря '
+                f'<b style="color:{pnl_color}">{trade_pct:.2f}%</b>.'
+            )
         else:
-            pnl_color = "#6c757d"
-            pnl_verb = "без изменений"
-        pnl_line = (
-            f'За следующие 4 часа цена BTC сдвинулась на '
-            f'<b>{price_move_pct:+.2f}%</b>. Агент {pnl_verb} '
-            f'<b style="color:{pnl_color}">{trade_pct:+.2f}%</b> от капитала.'
-        )
+            outcome_line = f'Через 4 часа цена почти не изменилась ({price_move_pct:+.2f}%). Без прибыли и убытка.'
     else:
-        pnl_line = "Следующий 4h бар ещё не закрылся — результат сделки пока неизвестен."
+        outcome_line = "Следующий 4-часовой интервал ещё не закрылся — итог будет позже."
 
     # News mood
     mean_s = b["sentiment_mean"]
     if mean_s > 0.15:
-        mood = "позитивный"
+        mood_word = "в целом позитивные"
         mood_color = "#2ca02c"
     elif mean_s < -0.15:
-        mood = "негативный"
+        mood_word = "в целом негативные"
         mood_color = "#d62728"
     else:
-        mood = "нейтральный"
+        mood_word = "нейтральные"
         mood_color = "#6c757d"
 
     with st.container(border=True):
-        # Header row — timestamp + action badge
         hdr_cols = st.columns([2, 2])
         hdr_cols[0].markdown(f"**{ts_str}**")
         hdr_cols[1].markdown(
@@ -416,48 +449,40 @@ for b in decorated[1:]:
             unsafe_allow_html=True,
         )
 
-        # Action details
-        st.markdown(f"**Что сделал:** {action_detail}")
+        st.markdown(action_detail)
+        st.markdown(vote_text)
+        st.markdown(f"**Что получилось:** {outcome_line}", unsafe_allow_html=True)
 
-        # Voting
-        st.markdown(f"**Решение ансамбля:** {vote_text}")
-
-        # Result
-        st.markdown(f"**Результат:** {pnl_line}", unsafe_allow_html=True)
-
-        # News block
         st.markdown(
-            f"**Новости в этом окне** ({b['n_news']} шт., общий настрой — "
-            f'<span style="color:{mood_color};font-weight:700;">{mood}</span>, '
-            f"средняя оценка {mean_s:+.2f}):",
+            f"**Новости за эти 4 часа** — {b['n_news']} шт., "
+            f'<span style="color:{mood_color};font-weight:700;">{mood_word}</span>:',
             unsafe_allow_html=True,
         )
 
         items_to_show = sorted(b["items"], key=lambda x: -abs(x["sentiment_score"]))[:6]
         for item in items_to_show:
-            s_score = item["sentiment_score"]
             s_label = item["sentiment_label"]
             if s_label == "positive":
                 icon = "📈"
                 s_color = "#2ca02c"
-                mood_word = "позитивная"
+                s_word = "хорошая"
             elif s_label == "negative":
                 icon = "📉"
                 s_color = "#d62728"
-                mood_word = "негативная"
+                s_word = "плохая"
             else:
                 icon = "●"
                 s_color = "#6c757d"
-                mood_word = "нейтральная"
+                s_word = "нейтральная"
             ts_sub = pd.Timestamp(item["ts"]).strftime("%H:%M")
             st.markdown(
                 f'<div style="margin-left:10px;margin-bottom:6px;">'
                 f'{icon} <a href="{item["link"]}" target="_blank">{item["title"]}</a> '
-                f'<span style="color:{s_color};font-weight:600;">— {mood_word}</span> '
+                f'<span style="color:{s_color};font-weight:600;">— {s_word} новость</span> '
                 f'<span style="color:#888;font-size:12px;">({item["source"]}, {ts_sub})</span>'
                 f'</div>',
                 unsafe_allow_html=True,
             )
         if len(b["items"]) > 6:
-            st.caption(f"... и ещё {len(b['items']) - 6} новостей в этом окне")
+            st.caption(f"Ещё {len(b['items']) - 6} новостей за этот интервал — свернул чтобы не загромождать")
 
