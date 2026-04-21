@@ -2,7 +2,6 @@
 import sys
 from pathlib import Path
 
-# pages/*.py run with cwd=dsr_experiment/; add project root for imports
 _THIS = Path(__file__).resolve()
 _PROJECT_ROOT = _THIS.parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
@@ -15,17 +14,16 @@ import plotly.graph_objects as go
 
 from dashboard.utils.paths import DEFAULT_SNAPSHOT, OOS_DIR, ensure_lib_on_path
 from dashboard.utils import snapshot
-from dashboard.utils.theme import ALGO_COLORS, BH_COLOR
+from dashboard.utils.theme import ALGO_COLORS, BH_COLOR, hex_to_rgba
 
 ensure_lib_on_path()
-
 from lib.metrics import compute_metrics
 from lib.bootstrap import bootstrap_ci
 
-st.set_page_config(page_title="Backtest", page_icon="📊", layout="wide")
 
-st.title("📊 Backtest Results")
-st.caption("Per-seed backtest artifacts from `experiments/` with bootstrap 95% CI.")
+st.set_page_config(page_title="Backtest", layout="wide")
+st.title("Backtest")
+
 
 # ---- Sidebar controls ----
 snaps = snapshot.list_snapshots()
@@ -38,9 +36,8 @@ snap_name = st.sidebar.selectbox("Snapshot", snaps, index=default_idx)
 
 periods = snapshot.list_periods(snap_name)
 if not periods:
-    st.error(f"No OOS periods in `{snap_name}`. Expected files like oos_oos_*.csv.")
+    st.error(f"No OOS periods in `{snap_name}`.")
     st.stop()
-
 period = st.sidebar.selectbox("OOS period", periods, index=0)
 
 models = snapshot.discover_models(snap_name)
@@ -48,16 +45,12 @@ algos_avail = sorted(models.keys())
 if not algos_avail:
     st.error(f"No models found in `{snap_name}/models/`.")
     st.stop()
+algos_selected = st.sidebar.multiselect("Algorithms", algos_avail, default=algos_avail)
 
-algos_selected = st.sidebar.multiselect(
-    "Algorithms", algos_avail, default=algos_avail
-)
 
-# ---- Buy & Hold baseline ----
+# ---- Data loading ----
 @st.cache_data
-def build_buy_and_hold(period_key: str, warmup: int = 30,
-                      tx_cost: float = 0.001) -> dict:
-    """Compute B&H daily returns, equity curve, metrics for a given OOS period."""
+def build_buy_and_hold(period_key: str, warmup: int = 30, tx_cost: float = 0.001):
     path = OOS_DIR / f"{period_key}_features.parquet"
     if not path.exists():
         return None
@@ -76,227 +69,228 @@ def build_buy_and_hold(period_key: str, warmup: int = 30,
     return m
 
 
-bh = build_buy_and_hold(period)
-if bh is None:
-    st.warning(f"No OOS parquet for `{period}` — B&H baseline unavailable.")
-    bh = {"sharpe_ratio": float("nan"), "total_return": float("nan"),
-          "max_drawdown": float("nan"), "calmar_ratio": float("nan"),
-          "sortino_ratio": float("nan"),
-          "equity_curve": np.array([1.0]), "daily_returns": np.array([])}
-
-
-# ---- Gather seed data ----
-def load_algo_seeds(algo: str) -> list[dict]:
-    """Load all available per-seed artifacts for given algo."""
+def load_algo_seeds(snap: str, per: str, algo: str) -> list[dict]:
     rows = []
-    for entry in models.get(algo, []):
-        seed = entry["seed"]
+    for entry in snapshot.discover_models(snap).get(algo, []):
         try:
-            d = snapshot.load_seed_npz(snap_name, period, algo, seed)
-            d["seed"] = seed
-            d["algo"] = algo
-            d["metrics"] = compute_metrics(d["daily_returns"])
-            rows.append(d)
+            d = snapshot.load_seed_npz(snap, per, algo, entry["seed"])
         except FileNotFoundError:
-            pass  # Skip silently; aggregated warnings shown below
+            continue
+        d["seed"] = entry["seed"]
+        d["metrics"] = compute_metrics(d["daily_returns"])
+        rows.append(d)
     return rows
 
 
-algo_data: dict[str, list[dict]] = {a: load_algo_seeds(a) for a in algos_selected}
-
-# Warn about missing artifacts
-for algo in algos_selected:
-    expected = len(models.get(algo, []))
-    got = len(algo_data[algo])
-    if got < expected:
-        st.warning(
-            f"{algo}: found {got}/{expected} .npz artifacts. "
-            f"Missing seeds excluded from analysis."
-        )
-
-# ---- KPI row ----
-st.subheader(f"Summary — `{snap_name}` / `{period}`")
-
-n_cols = 1 + len(algos_selected)
-cols = st.columns(n_cols)
-
-with cols[0]:
-    st.markdown("**Buy & Hold**")
-    st.metric("Sharpe", f"{bh['sharpe_ratio']:+.3f}")
-    st.metric("Return", f"{bh['total_return']*100:+.1f}%")
-    st.metric("MaxDD", f"{bh['max_drawdown']*100:.1f}%")
-
-for i, algo in enumerate(algos_selected):
-    with cols[i + 1]:
-        rows = algo_data[algo]
-        if not rows:
-            st.markdown(f"**{algo}** — no data")
-            continue
-        sharpes = np.array([r["metrics"]["sharpe_ratio"] for r in rows])
-        rets = np.array([r["metrics"]["total_return"] for r in rows])
-        dds = np.array([r["metrics"]["max_drawdown"] for r in rows])
-        st.markdown(f"**{algo}** (n={len(rows)})")
-        st.metric("Sharpe", f"{sharpes.mean():+.3f} ± {sharpes.std():.3f}")
-        st.metric("Return", f"{rets.mean()*100:+.1f}% ± {rets.std()*100:.1f}%")
-        st.metric("MaxDD", f"{dds.mean()*100:.1f}% ± {dds.std()*100:.1f}%")
+bh = build_buy_and_hold(period)
+algo_data: dict[str, list[dict]] = {a: load_algo_seeds(snap_name, period, a) for a in algos_selected}
 
 
-# ---- Bootstrap CI forest plot ----
-st.subheader("Bootstrap 95% confidence intervals — Sharpe")
+# ---- vs B&H classifier ----
+def vs_bh_label(ci_lower: float, ci_upper: float, bh_sharpe: float) -> str:
+    if bh is None or np.isnan(bh_sharpe):
+        return "n/a"
+    if ci_lower > bh_sharpe:
+        return "higher"
+    if ci_upper < bh_sharpe:
+        return "lower"
+    return "overlap"
 
-fig_ci = go.Figure()
-labels, centers, lo_err, hi_err, colors_fp = [], [], [], [], []
 
+VS_COLORS = {"higher": "#28a745", "overlap": "#ffc107", "lower": "#dc3545", "n/a": "#6c757d"}
+
+
+# ---- Build summary table ----
+table_rows = []
+if bh is not None:
+    table_rows.append({
+        "Strategy": "Buy & Hold",
+        "n": 1,
+        "Sharpe": f"{bh['sharpe_ratio']:+.3f}",
+        "95% CI": "—",
+        "Return": f"{bh['total_return']*100:+.1f}%",
+        "MaxDD": f"{bh['max_drawdown']*100:.1f}%",
+        "vs B&H": "—",
+    })
+    bh_sh = bh["sharpe_ratio"]
+else:
+    bh_sh = float("nan")
+
+algo_ci = {}  # cache CI for plot
 for algo in algos_selected:
     rows = algo_data[algo]
     if not rows:
         continue
     returns_list = [r["daily_returns"] for r in rows]
-    ci = bootstrap_ci(returns_list, n_bootstrap=5000, confidence=0.95, seed=42)
-    mean_v = ci["sharpe_ratio"]["mean"]
-    lo = ci["sharpe_ratio"]["ci_lower"]
-    hi = ci["sharpe_ratio"]["ci_upper"]
-    labels.append(f"{algo} (n={len(rows)})")
-    centers.append(mean_v)
-    lo_err.append(mean_v - lo)
-    hi_err.append(hi - mean_v)
-    colors_fp.append(ALGO_COLORS.get(algo, "gray"))
+    ci = bootstrap_ci(returns_list, n_bootstrap=2000, confidence=0.95, seed=42)
+    sh = np.array([r["metrics"]["sharpe_ratio"] for r in rows])
+    ret = np.array([r["metrics"]["total_return"] for r in rows])
+    dd = np.array([r["metrics"]["max_drawdown"] for r in rows])
+    lo, hi = ci["sharpe_ratio"]["ci_lower"], ci["sharpe_ratio"]["ci_upper"]
+    vs = vs_bh_label(lo, hi, bh_sh)
+    algo_ci[algo] = {"mean": sh.mean(), "lo": lo, "hi": hi, "vs": vs}
+    table_rows.append({
+        "Strategy": algo,
+        "n": len(rows),
+        "Sharpe": f"{sh.mean():+.3f} ± {sh.std():.3f}",
+        "95% CI": f"[{lo:+.3f}, {hi:+.3f}]",
+        "Return": f"{ret.mean()*100:+.1f}% ± {ret.std()*100:.1f}%",
+        "MaxDD": f"{dd.mean()*100:.1f}% ± {dd.std()*100:.1f}%",
+        "vs B&H": vs,
+    })
+
+df_summary = pd.DataFrame(table_rows)
+
+
+def style_vs(v):
+    return f"background-color: {VS_COLORS.get(v, 'transparent')}; color: white" if v in VS_COLORS else ""
+
+
+st.dataframe(
+    df_summary.style.map(style_vs, subset=["vs B&H"]),
+    width="stretch",
+    hide_index=True,
+)
+
+
+# ---- Figure 1: equity curves (median + IQR band, 3 lines total) ----
+st.subheader("Equity curves")
+
+fig_eq = go.Figure()
+
+if bh is not None:
+    fig_eq.add_trace(go.Scatter(
+        y=bh["equity_curve"], mode="lines",
+        line=dict(color=BH_COLOR, dash="dash", width=2),
+        name="Buy & Hold",
+    ))
+
+for algo in algos_selected:
+    rows = algo_data[algo]
+    if not rows:
+        continue
+    # Stack equity curves into (n_seeds, T) for percentile aggregation
+    L = min(len(r["equity_curve"]) for r in rows)
+    stack = np.array([r["equity_curve"][:L] for r in rows])
+    p25 = np.percentile(stack, 25, axis=0)
+    p50 = np.percentile(stack, 50, axis=0)
+    p75 = np.percentile(stack, 75, axis=0)
+    color = ALGO_COLORS.get(algo, "#808080")
+    rgba_fill = hex_to_rgba(color, 0.15)
+    x = np.arange(L)
+    # Upper band
+    fig_eq.add_trace(go.Scatter(
+        x=x, y=p75, mode="lines", line=dict(width=0),
+        hoverinfo="skip", showlegend=False,
+    ))
+    # Lower band with fill
+    fig_eq.add_trace(go.Scatter(
+        x=x, y=p25, mode="lines", line=dict(width=0),
+        fill="tonexty", fillcolor=rgba_fill,
+        hoverinfo="skip", name=f"{algo} IQR",
+        showlegend=False,
+    ))
+    # Median line
+    fig_eq.add_trace(go.Scatter(
+        x=x, y=p50, mode="lines",
+        line=dict(color=color, width=2.5),
+        name=f"{algo} median (n={len(rows)})",
+    ))
+
+fig_eq.update_layout(
+    xaxis_title="Bar (4h)", yaxis_title="Cumulative value",
+    height=440, hovermode="x unified",
+    legend=dict(orientation="h", yanchor="top", y=-0.15),
+)
+st.plotly_chart(fig_eq, width="stretch")
+
+
+# ---- Figure 2: Sharpe distribution per seed ----
+st.subheader("Sharpe distribution (per seed)")
+
+fig_box = go.Figure()
+
+for algo in algos_selected:
+    rows = algo_data[algo]
+    if not rows:
+        continue
+    sharpes = [r["metrics"]["sharpe_ratio"] for r in rows]
+    seeds = [r["seed"] for r in rows]
+    color = ALGO_COLORS.get(algo, "gray")
+    fig_box.add_trace(go.Box(
+        y=sharpes, name=algo, boxpoints="all", jitter=0.4, pointpos=0,
+        marker=dict(color=color, size=8),
+        line=dict(color=color),
+        hovertext=[f"seed={s}" for s in seeds],
+        hovertemplate="%{hovertext}<br>Sharpe=%{y:.3f}<extra></extra>",
+    ))
+
+if bh is not None:
+    fig_box.add_hline(
+        y=bh["sharpe_ratio"], line_dash="dash", line_color="red",
+        annotation_text=f"B&H {bh['sharpe_ratio']:+.3f}",
+        annotation_position="right",
+    )
+fig_box.add_hline(y=0, line_color="gray", line_width=1)
+fig_box.update_layout(
+    yaxis_title="Sharpe ratio", height=380,
+    showlegend=False,
+)
+st.plotly_chart(fig_box, width="stretch")
+
+
+# ---- Figure 3: Bootstrap CI forest plot ----
+st.subheader("Bootstrap 95% CI — Sharpe")
+
+fig_ci = go.Figure()
+labels, centers, lo_err, hi_err, colors_fp = [], [], [], [], []
+for algo in algos_selected:
+    if algo not in algo_ci:
+        continue
+    d = algo_ci[algo]
+    labels.append(f"{algo} (n={len(algo_data[algo])})")
+    centers.append(d["mean"])
+    lo_err.append(d["mean"] - d["lo"])
+    hi_err.append(d["hi"] - d["mean"])
+    colors_fp.append(VS_COLORS.get(d["vs"], "#6c757d"))
 
 if labels:
     fig_ci.add_trace(go.Scatter(
         x=centers, y=labels, mode="markers",
-        marker=dict(size=14, color=colors_fp),
+        marker=dict(size=16, color=colors_fp),
         error_x=dict(type="data", symmetric=False,
-                     array=hi_err, arrayminus=lo_err, thickness=2),
+                     array=hi_err, arrayminus=lo_err, thickness=2, width=8),
         showlegend=False,
     ))
-    fig_ci.add_vline(x=bh["sharpe_ratio"], line_dash="dash", line_color="red",
-                     annotation_text=f"B&H ({bh['sharpe_ratio']:.2f})",
-                     annotation_position="top")
+    if bh is not None:
+        fig_ci.add_vline(x=bh_sh, line_dash="dash", line_color="red",
+                         annotation_text=f"B&H {bh_sh:+.3f}", annotation_position="top")
     fig_ci.add_vline(x=0, line_color="gray", line_width=1)
     fig_ci.update_layout(
-        xaxis_title="Sharpe ratio (bootstrap 95% CI)",
-        yaxis_title="",
-        height=150 + 60 * len(labels),
-        margin=dict(l=140),
+        xaxis_title="Sharpe", yaxis_title="",
+        height=120 + 60 * len(labels), margin=dict(l=150),
     )
-    st.plotly_chart(fig_ci, use_container_width=True)
+    st.plotly_chart(fig_ci, width="stretch")
 
-# Interpretation messages
-bh_sh = bh["sharpe_ratio"]
-for algo in algos_selected:
-    rows = algo_data[algo]
-    if not rows:
-        continue
-    returns_list = [r["daily_returns"] for r in rows]
-    ci = bootstrap_ci(returns_list, n_bootstrap=5000, confidence=0.95, seed=42)
-    lo = ci["sharpe_ratio"]["ci_lower"]
-    hi = ci["sharpe_ratio"]["ci_upper"]
-    if not np.isnan(bh_sh) and lo > bh_sh:
-        st.success(
-            f"✅ **{algo}**: CI lower bound `{lo:+.3f}` > B&H `{bh_sh:+.3f}` "
-            "— statistically beats Buy & Hold (p < 0.05)."
-        )
-    elif not np.isnan(bh_sh) and hi < bh_sh:
-        st.error(
-            f"❌ **{algo}**: CI upper bound `{hi:+.3f}` < B&H `{bh_sh:+.3f}` "
-            "— statistically worse than Buy & Hold."
-        )
-    else:
-        st.warning(
-            f"⚠️ **{algo}**: CI `[{lo:+.3f}, {hi:+.3f}]` includes B&H `{bh_sh:+.3f}` "
-            "— not statistically distinguishable from baseline."
-        )
 
-# ---- Equity curves ----
-st.subheader("Equity curves")
-
-fig_eq = go.Figure()
-for algo in algos_selected:
-    rows = algo_data[algo]
-    if not rows:
-        continue
-    for i, r in enumerate(rows):
-        fig_eq.add_trace(go.Scatter(
-            y=r["equity_curve"], mode="lines",
-            line=dict(color=ALGO_COLORS.get(algo, "gray"), width=1),
-            opacity=0.35,
-            legendgroup=algo,
-            showlegend=(i == 0),
-            name=algo if i == 0 else None,
-            hovertemplate=f"{algo} seed={r['seed']}<br>bar=%{{x}}<br>equity=%{{y:.3f}}<extra></extra>",
-        ))
-
-fig_eq.add_trace(go.Scatter(
-    y=bh["equity_curve"], mode="lines",
-    line=dict(color=BH_COLOR, dash="dash", width=3),
-    name="Buy & Hold",
-))
-
-fig_eq.update_layout(
-    xaxis_title="Bar (4h)",
-    yaxis_title="Cumulative value (start=1.0)",
-    height=500,
-    hovermode="x unified",
-)
-st.plotly_chart(fig_eq, use_container_width=True)
-
-# ---- Drawdown curves ----
-st.subheader("Drawdown curves")
-
-def dd_pct(eq: np.ndarray) -> np.ndarray:
-    rm = np.maximum.accumulate(eq)
-    return (eq / rm - 1) * 100
-
-fig_dd = go.Figure()
-for algo in algos_selected:
-    rows = algo_data[algo]
-    if not rows:
-        continue
-    for i, r in enumerate(rows):
-        fig_dd.add_trace(go.Scatter(
-            y=dd_pct(r["equity_curve"]), mode="lines",
-            line=dict(color=ALGO_COLORS.get(algo, "gray"), width=1),
-            opacity=0.35,
-            legendgroup=algo,
-            showlegend=(i == 0),
-            name=algo if i == 0 else None,
-        ))
-fig_dd.add_trace(go.Scatter(
-    y=dd_pct(bh["equity_curve"]), mode="lines",
-    line=dict(color=BH_COLOR, dash="dash", width=3),
-    name="Buy & Hold",
-))
-fig_dd.add_hline(y=0, line_color="gray", line_width=1)
-fig_dd.update_layout(
-    xaxis_title="Bar (4h)",
-    yaxis_title="Drawdown (%)",
-    height=350,
-    hovermode="x unified",
-)
-st.plotly_chart(fig_dd, use_container_width=True)
-
-# ---- Per-seed table ----
-st.subheader("Per-seed breakdown")
+# ---- Per-seed expanders ----
+st.subheader("Individual seeds")
 
 for algo in algos_selected:
     rows = algo_data[algo]
     if not rows:
         continue
-    with st.expander(f"{algo} — {len(rows)} seeds", expanded=False):
-        table_rows = []
+    with st.expander(f"{algo} — {len(rows)} seeds"):
+        table = []
         for r in rows:
             m = r["metrics"]
-            table_rows.append({
+            table.append({
                 "seed": r["seed"],
-                "Sharpe": f"{m['sharpe_ratio']:+.3f}",
-                "Return": f"{m['total_return']*100:+.1f}%",
-                "MaxDD": f"{m['max_drawdown']*100:.1f}%",
-                "Sortino": f"{m['sortino_ratio']:+.3f}",
-                "Calmar": f"{m['calmar_ratio']:+.3f}",
+                "Sharpe": round(m["sharpe_ratio"], 3),
+                "Return": round(m["total_return"] * 100, 1),
+                "MaxDD": round(m["max_drawdown"] * 100, 1),
+                "Sortino": round(m["sortino_ratio"], 3),
+                "Calmar": round(m["calmar_ratio"], 3),
             })
-        df_seeds = pd.DataFrame(table_rows)
-        # Sort by Sharpe descending
-        df_seeds["_sort"] = df_seeds["Sharpe"].str.replace("+", "", regex=False).astype(float)
-        df_seeds = df_seeds.sort_values("_sort", ascending=False).drop(columns="_sort")
-        st.dataframe(df_seeds, use_container_width=True, hide_index=True)
+        df_seeds = pd.DataFrame(table).sort_values("Sharpe", ascending=False)
+        st.dataframe(df_seeds, width="stretch", hide_index=True)
