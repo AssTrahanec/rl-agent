@@ -1,4 +1,4 @@
-"""News Analyzer — paste a news article, see how it shifts the model's recommendation."""
+"""News Analyzer — paste news articles, see how they shift the model's recommendation."""
 import sys
 from pathlib import Path
 
@@ -11,14 +11,15 @@ import streamlit as st
 
 from dashboard.utils.paths import ensure_lib_on_path
 from dashboard.utils.news_impact import analyze_news_impact
+from dashboard.utils.news_feed import load_cached_feed
 
 ensure_lib_on_path()
 
 st.set_page_config(page_title="Анализатор новости", layout="wide")
 st.title("Анализатор новости")
 st.caption(
-    "Вставьте новость — модель покажет, как она меняет рекомендуемую долю "
-    "капитала в биткоине. FinBERT обучен на английском: вставляйте англоязычный текст."
+    "Вставьте новости — по одной на строку. Модель покажет, как новостной фон "
+    "меняет её решение. FinBERT обучен на английском — вставляйте англоязычный текст."
 )
 
 PRESETS = {
@@ -35,70 +36,94 @@ PRESETS = {
         "in Europe next month."
     ),
 }
+_RECENT_LIMIT = 10
 
 if "news_text" not in st.session_state:
     st.session_state.news_text = ""
 
-st.write("Готовые примеры:")
+st.write("Готовые примеры (заменяют поле):")
 preset_cols = st.columns(len(PRESETS))
 for col, (label, text) in zip(preset_cols, PRESETS.items()):
     if col.button(label, use_container_width=True):
         st.session_state.news_text = text
 
-news_text = st.text_area("Текст новости", height=140, key="news_text")
+if st.button("Взять последние новости из ленты", use_container_width=True):
+    feed = load_cached_feed()
+    if feed.empty:
+        st.warning("Лента пуста — открой главную страницу дашборда, чтобы она загрузилась.")
+    else:
+        recent = feed.sort_values("ts", ascending=False).head(_RECENT_LIMIT)
+        lines = [f"{r.title}. {r.summary}".strip() for r in recent.itertuples()]
+        st.session_state.news_text = "\n".join(lines)
+
+news_text = st.text_area("Новости (по одной на строку)", height=200, key="news_text")
 analyze = st.button("Анализировать", type="primary")
 
 
 if analyze:
-    if not news_text.strip():
-        st.warning("Введите текст новости или выберите пример.")
+    news_list = [ln.strip() for ln in news_text.splitlines() if ln.strip()]
+    if not news_list:
+        st.warning("Введите хотя бы одну новость или выберите пример.")
         st.stop()
 
-    with st.spinner("FinBERT оценивает новость, ансамбль из 10 моделей считает решение..."):
-        result = analyze_news_impact(news_text)
+    with st.spinner(
+        f"FinBERT оценивает {len(news_list)} новостей, "
+        f"ансамбль из 10 моделей считает решение..."
+    ):
+        result = analyze_news_impact(news_list)
 
-    # Block 1 — how FinBERT read the news
+    # Block 1 — sentiment of each news item
     st.divider()
-    st.subheader("Как FinBERT оценил новость")
-    sent = result["sentiment"]
-    if sent > 0.05:
-        label, color = "Позитивная новость", "#2ca02c"
-    elif sent < -0.05:
-        label, color = "Негативная новость", "#d62728"
-    else:
-        label, color = "Нейтральная новость", "#6c757d"
-    st.markdown(
-        f'<span style="background:{color};color:white;padding:6px 14px;'
-        f'border-radius:6px;font-weight:700;font-size:16px;">'
-        f'{label} ({sent:+.2f})</span>',
-        unsafe_allow_html=True,
+    st.subheader(f"Оценка новостей ({len(news_list)})")
+    for text, sent in result["per_news"]:
+        if sent > 0.05:
+            color = "#2ca02c"
+        elif sent < -0.05:
+            color = "#d62728"
+        else:
+            color = "#6c757d"
+        preview = text if len(text) <= 110 else text[:110] + "…"
+        st.markdown(
+            f'<div style="margin-bottom:6px;">'
+            f'<span style="background:{color};color:white;padding:2px 8px;'
+            f'border-radius:4px;font-weight:700;font-size:12px;">{sent:+.2f}</span> '
+            f'<span style="font-size:14px;">{preview}</span></div>',
+            unsafe_allow_html=True,
+        )
+    st.caption(f"Средняя тональность фона: {result['stats']['sentiment_mean']:+.2f}")
+
+    # Block 2 — ensemble vote, before vs after the news
+    votes_without = result["decision_without"].get("votes") or {}
+    votes_with = result["decision_with"].get("votes") or {}
+    total = result["decision_without"].get("total_seeds", 0)
+    buy_without = votes_without.get("BUY", 0)
+    buy_with = votes_with.get("BUY", 0)
+
+    st.divider()
+    st.subheader("Решение ансамбля — сколько моделей за покупку")
+    st.caption(
+        "Каждая из 10 моделей решает всё-или-ничего: купить на весь капитал "
+        "или выйти в кэш. Ниже — сколько проголосовало за покупку."
     )
-
-    # Block 2 — recommended allocation, before vs after the news
-    pct_without = round(result["decision_without"]["allocation"] * 100)
-    pct_with = round(result["decision_with"]["allocation"] * 100)
-    delta = pct_with - pct_without
-
-    st.divider()
-    st.subheader("Рекомендуемая доля капитала в биткоине")
     c1, c2 = st.columns(2)
-    c1.metric("Без этой новости", f"{pct_without}%")
-    c2.metric("С этой новостью", f"{pct_with}%", delta=f"{delta:+d} п.п.")
+    c1.metric("Без новостей", f"{buy_without} из {total}")
+    c2.metric("С новостями", f"{buy_with} из {total}",
+              delta=f"{buy_with - buy_without:+d}")
 
     # Block 3 — plain-language verdict
     st.divider()
-    if delta >= 5:
-        st.success(
-            f"Новость повышает рекомендуемую долю на {delta} процентных пункта: "
-            f"модель советует увеличить позицию в биткоине."
-        )
-    elif delta <= -5:
+    diff = buy_with - buy_without
+    if diff <= -1:
         st.warning(
-            f"Новость снижает рекомендуемую долю на {abs(delta)} процентных пункта: "
-            f"модель советует сократить позицию в биткоине."
+            f"Новостной фон переубедил {abs(diff)} модель(и) уйти в кэш — "
+            f"совет склонился в сторону продажи."
+        )
+    elif diff >= 1:
+        st.success(
+            f"Новостной фон склонил ещё {diff} модель(и) к покупке — "
+            f"совет усилился в сторону покупки."
         )
     else:
         st.info(
-            "Новость почти не меняет рекомендацию: на текущем рынке ценовой тренд "
-            "перевешивает влияние одной новости."
+            "Новостной фон не изменил решение ансамбля — ценовой тренд перевесил."
         )
