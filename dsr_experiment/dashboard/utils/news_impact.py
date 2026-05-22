@@ -13,6 +13,9 @@ def inject_news_features(features, feature_columns, sentiment, emb_64):
     sentiment: float in [-1, 1]. emb_64: 64 PCA-compressed embedding values.
     Lag/rolling news columns are intentionally left untouched (need history).
     """
+    if len(emb_64) != _EMB_DIM:
+        raise ValueError(f"emb_64 must have {_EMB_DIM} values, got {len(emb_64)}")
+
     out = np.array(features, dtype=np.float32, copy=True)
     last = out.shape[0] - 1
     col_idx = {name: i for i, name in enumerate(feature_columns)}
@@ -20,6 +23,7 @@ def inject_news_features(features, feature_columns, sentiment, emb_64):
     for name in _SENTIMENT_DIRECT:
         if name in col_idx:
             out[last, col_idx[name]] = sentiment
+    # a single article has no spread — std/spread set to 0 by design
     for name in _SENTIMENT_ZERO:
         if name in col_idx:
             out[last, col_idx[name]] = 0.0

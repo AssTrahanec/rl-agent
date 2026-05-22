@@ -60,3 +60,21 @@ def test_inject_returns_copy():
     # Original must be unchanged.
     assert np.all(features == 0.0)
     assert out is not features
+
+
+def test_inject_zeroes_sentiment_std_and_spread():
+    cols = _columns()
+    features = np.zeros((10, len(cols)), dtype=np.float32)
+    out = inject_news_features(features, cols, sentiment=0.8,
+                               emb_64=np.ones(64, dtype=np.float32))
+    last = out.shape[0] - 1
+    assert out[last, cols.index("sentiment_std")] == 0.0
+    assert out[last, cols.index("sentiment_spread")] == 0.0
+
+
+def test_inject_rejects_wrong_embedding_length():
+    cols = _columns()
+    features = np.zeros((10, len(cols)), dtype=np.float32)
+    with pytest.raises(ValueError):
+        inject_news_features(features, cols, sentiment=0.5,
+                             emb_64=np.zeros(32, dtype=np.float32))
