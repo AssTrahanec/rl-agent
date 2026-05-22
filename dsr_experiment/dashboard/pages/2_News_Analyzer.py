@@ -43,34 +43,49 @@ if "bg_text" not in st.session_state:
 if "tested_text" not in st.session_state:
     st.session_state.tested_text = ""
 
-# --- Field 1: news background ---
-st.subheader("1. Новостной фон (необязательно)")
-if st.button("Взять последние новости из ленты", use_container_width=True):
-    feed = load_cached_feed()
-    if feed.empty:
-        st.warning("Лента пуста — открой главную страницу дашборда, чтобы она загрузилась.")
-    else:
-        recent = feed.sort_values("ts", ascending=False).head(_RECENT_LIMIT)
-        lines = [f"{r.title}. {r.summary}".strip() for r in recent.itertuples()]
-        st.session_state.bg_text = "\n".join(lines)
-st.caption("Лента — та же, что наполняется и показывается на главной странице дашборда.")
-bg_text = st.text_area(
-    "Фоновые новости — по одной на строку (можно оставить пустым)",
-    height=140, key="bg_text",
+_BG_PLACEHOLDER = (
+    "Свежие заголовки про биткоин — по одной новости на строку.\n"
+    "Или нажмите кнопку выше, чтобы подтянуть ленту автоматически.\n"
+    "Можно оставить пустым."
 )
+_TESTED_PLACEHOLDER = (
+    "Новость, эффект которой проверяем. Например:\n"
+    "SEC approves the first spot Bitcoin ETF.\n"
+    "Или выберите готовый пример кнопкой выше."
+)
+
+# --- Field 1: news background ---
+with st.container(border=True):
+    st.markdown("#### 1. Новостной фон  ·  *необязательно*")
+    if st.button("📰  Взять последние новости из ленты", use_container_width=True):
+        feed = load_cached_feed()
+        if feed.empty:
+            st.warning(
+                "Лента пуста — открой главную страницу дашборда, чтобы она загрузилась."
+            )
+        else:
+            recent = feed.sort_values("ts", ascending=False).head(_RECENT_LIMIT)
+            lines = [f"{r.title}. {r.summary}".strip() for r in recent.itertuples()]
+            st.session_state.bg_text = "\n".join(lines)
+    st.caption("Та же лента, что наполняется и показывается на главной странице дашборда.")
+    bg_text = st.text_area(
+        "Фоновые новости", height=150, key="bg_text",
+        placeholder=_BG_PLACEHOLDER, label_visibility="collapsed",
+    )
 
 # --- Field 2: tested news ---
-st.subheader("2. Проверяемая новость")
-preset_cols = st.columns(len(PRESETS))
-for col, (label, text) in zip(preset_cols, PRESETS.items()):
-    if col.button(label, use_container_width=True):
-        st.session_state.tested_text = text
-tested_text = st.text_area(
-    "Новость(и), эффект которой проверяем — по одной на строку",
-    height=110, key="tested_text",
-)
+with st.container(border=True):
+    st.markdown("#### 2. Проверяемая новость")
+    preset_cols = st.columns(len(PRESETS))
+    for col, (label, text) in zip(preset_cols, PRESETS.items()):
+        if col.button(label, use_container_width=True):
+            st.session_state.tested_text = text
+    tested_text = st.text_area(
+        "Проверяемая новость", height=120, key="tested_text",
+        placeholder=_TESTED_PLACEHOLDER, label_visibility="collapsed",
+    )
 
-analyze = st.button("Анализировать", type="primary")
+analyze = st.button("Анализировать", type="primary", use_container_width=True)
 
 
 def _news_line(text, sent):
