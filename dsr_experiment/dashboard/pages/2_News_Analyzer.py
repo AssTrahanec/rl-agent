@@ -53,6 +53,7 @@ if st.button("Взять последние новости из ленты", use
         recent = feed.sort_values("ts", ascending=False).head(_RECENT_LIMIT)
         lines = [f"{r.title}. {r.summary}".strip() for r in recent.itertuples()]
         st.session_state.bg_text = "\n".join(lines)
+st.caption("Лента — та же, что наполняется и показывается на главной странице дашборда.")
 bg_text = st.text_area(
     "Фоновые новости — по одной на строку (можно оставить пустым)",
     height=140, key="bg_text",
@@ -72,6 +73,24 @@ tested_text = st.text_area(
 analyze = st.button("Анализировать", type="primary")
 
 
+def _news_line(text, sent):
+    """Render one news item: colored sentiment badge + text preview."""
+    if sent > 0.05:
+        color = "#2ca02c"
+    elif sent < -0.05:
+        color = "#d62728"
+    else:
+        color = "#6c757d"
+    preview = text if len(text) <= 110 else text[:110] + "…"
+    st.markdown(
+        f'<div style="margin-bottom:6px;">'
+        f'<span style="background:{color};color:white;padding:2px 8px;'
+        f'border-radius:4px;font-weight:700;font-size:12px;">{sent:+.2f}</span> '
+        f'<span style="font-size:14px;">{preview}</span></div>',
+        unsafe_allow_html=True,
+    )
+
+
 if analyze:
     background = [ln.strip() for ln in bg_text.splitlines() if ln.strip()]
     tested = [ln.strip() for ln in tested_text.splitlines() if ln.strip()]
@@ -82,31 +101,29 @@ if analyze:
     with st.spinner("FinBERT оценивает новости, ансамбль из 10 моделей считает решение..."):
         result = analyze_news_impact(background, tested)
 
-    # Block 1 — tested news sentiment + background summary
+    # Block 1 — exactly what text was fed to the model
     st.divider()
-    st.subheader("Проверяемая новость")
+    st.subheader("Что подаётся в модель")
+
+    st.markdown("**Проверяемая новость:**")
     for text, sent in result["tested_per_news"]:
-        if sent > 0.05:
-            color = "#2ca02c"
-        elif sent < -0.05:
-            color = "#d62728"
-        else:
-            color = "#6c757d"
-        preview = text if len(text) <= 110 else text[:110] + "…"
-        st.markdown(
-            f'<div style="margin-bottom:6px;">'
-            f'<span style="background:{color};color:white;padding:2px 8px;'
-            f'border-radius:4px;font-weight:700;font-size:12px;">{sent:+.2f}</span> '
-            f'<span style="font-size:14px;">{preview}</span></div>',
-            unsafe_allow_html=True,
-        )
+        _news_line(text, sent)
+
     if result["background_count"] > 0:
-        st.caption(
-            f"Новостной фон: {result['background_count']} новостей, "
+        st.markdown(
+            f"**Новостной фон:** {result['background_count']} новостей, "
             f"средняя тональность {result['background_mean']:+.2f}"
         )
+        with st.expander(f"Показать новости фона ({result['background_count']})"):
+            for text, sent in result["background_per_news"]:
+                _news_line(text, sent)
     else:
         st.caption("Фон пуст — сравнение идёт с состоянием без новостей.")
+
+    st.caption(
+        "Проверяемая новость и фон вместе сливаются в один новостной сигнал "
+        "и подаются в модель."
+    )
 
     # Block 2 — ensemble vote, background vs background + tested news
     votes_without = result["decision_without"].get("votes") or {}

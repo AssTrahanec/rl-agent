@@ -111,9 +111,11 @@ def analyze_news_impact(background, tested):
         bg = score_news_batch(background)
         feat_without = inject_news_features(features, columns, bg["stats"], bg["emb_64"])
         background_mean = bg["stats"]["sentiment_mean"]
+        background_per_news = bg["per_news"]
     else:
         feat_without = features
         background_mean = 0.0
+        background_per_news = []
     obs_without = build_live_obs(feat_without, prev_allocation=0.0, window=30)
     decision_without = _ensemble_on_obs(obs_without, seeds_paths, "DQN", 0.0)
 
@@ -127,6 +129,7 @@ def analyze_news_impact(background, tested):
 
     return {
         "tested_per_news": combined["per_news"][len(background):],
+        "background_per_news": background_per_news,
         "background_count": len(background),
         "background_mean": background_mean,
         "decision_without": decision_without,
