@@ -14,6 +14,34 @@ from dashboard.utils.news_impact import analyze_news_impact
 
 ensure_lib_on_path()
 
+_ACTION_COLOR = {"BUY": "#2ca02c", "SELL": "#d62728", "HOLD": "#6c757d"}
+
+
+def _dominant(votes):
+    """Action with the most ensemble votes."""
+    return max(votes, key=votes.get)
+
+
+def _lean(votes):
+    """Net bullish lean: BUY votes minus SELL votes."""
+    return votes.get("BUY", 0) - votes.get("SELL", 0)
+
+
+def _decision_card(title, decision):
+    votes = decision.get("votes") or {"BUY": 0, "HOLD": 0, "SELL": 0}
+    action = _dominant(votes)
+    color = _ACTION_COLOR[action]
+    st.markdown(
+        f'<div style="padding:18px;border-radius:10px;background:{color};color:white;">'
+        f'<div style="font-size:13px;opacity:0.9;">{title}</div>'
+        f'<div style="font-size:40px;font-weight:800;">{action}</div>'
+        f'<div style="font-size:13px;opacity:0.9;">'
+        f'BUY {votes["BUY"]} · HOLD {votes["HOLD"]} · SELL {votes["SELL"]}</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
 st.set_page_config(page_title="Анализатор новости", layout="wide")
 st.title("Анализатор новости")
 st.caption(
@@ -45,40 +73,9 @@ for col, (label, text) in zip(preset_cols, PRESETS.items()):
     if col.button(label, use_container_width=True):
         st.session_state.news_text = text
 
-news_text = st.text_area(
-    "Текст новости", value=st.session_state.news_text, height=140,
-    key="news_text",
-)
+news_text = st.text_area("Текст новости", height=140, key="news_text")
 
 analyze = st.button("Анализировать", type="primary")
-
-
-_ACTION_COLOR = {"BUY": "#2ca02c", "SELL": "#d62728", "HOLD": "#6c757d"}
-
-
-def _dominant(votes):
-    """Action with the most ensemble votes."""
-    return max(votes, key=votes.get)
-
-
-def _lean(votes):
-    """Net bullish lean: BUY votes minus SELL votes."""
-    return votes.get("BUY", 0) - votes.get("SELL", 0)
-
-
-def _decision_card(title, decision):
-    votes = decision.get("votes") or {"BUY": 0, "HOLD": 0, "SELL": 0}
-    action = _dominant(votes)
-    color = _ACTION_COLOR[action]
-    st.markdown(
-        f'<div style="padding:18px;border-radius:10px;background:{color};color:white;">'
-        f'<div style="font-size:13px;opacity:0.9;">{title}</div>'
-        f'<div style="font-size:40px;font-weight:800;">{action}</div>'
-        f'<div style="font-size:13px;opacity:0.9;">'
-        f'BUY {votes["BUY"]} · HOLD {votes["HOLD"]} · SELL {votes["SELL"]}</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
 
 
 if analyze:
@@ -116,8 +113,9 @@ if analyze:
 
     # Block 3 — verdict (based on the BUY-minus-SELL lean shift)
     st.divider()
-    lean_delta = (_lean(result["decision_with"]["votes"])
-                  - _lean(result["decision_without"]["votes"]))
+    votes_without = result["decision_without"].get("votes") or {}
+    votes_with = result["decision_with"].get("votes") or {}
+    lean_delta = _lean(votes_with) - _lean(votes_without)
     if lean_delta >= 1:
         st.success(
             f"Новость склоняет модель к покупке — перевес BUY вырос "
@@ -136,7 +134,7 @@ if analyze:
     # Under the hood
     with st.expander("Под капотом — что подаётся в модель"):
         st.write(f"Тональность FinBERT: `{sent:+.4f}`")
-        st.write("news_count: `1`")
+        st.write("Признак news_count установлен в `1` для каждого бара окна")
         st.write(
             f"Эмбеддинг новости пересчитан (64 PCA-компоненты), "
             f"первые 5: `{[round(float(x), 3) for x in result['emb_64'][:5]]}`"
