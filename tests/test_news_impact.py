@@ -11,6 +11,7 @@ if str(_DSR_EXP) not in sys.path:
     sys.path.insert(0, str(_DSR_EXP))
 
 from dashboard.utils.news_impact import inject_news_features  # noqa: E402
+from dashboard.utils.news_impact import score_news  # noqa: E402
 
 
 def _columns():
@@ -78,3 +79,14 @@ def test_inject_rejects_wrong_embedding_length():
     with pytest.raises(ValueError):
         inject_news_features(features, cols, sentiment=0.5,
                              emb_64=np.zeros(32, dtype=np.float32))
+
+
+@pytest.mark.integration
+def test_score_news_positive_text():
+    """A clearly positive headline scores positive; embedding has shape (64,)."""
+    sentiment, emb = score_news(
+        "Bitcoin surges to a new all-time high as institutional demand soars."
+    )
+    assert -1.0 <= sentiment <= 1.0
+    assert sentiment > 0.0
+    assert emb.shape == (64,)

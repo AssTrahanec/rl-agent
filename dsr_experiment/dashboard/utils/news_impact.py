@@ -34,3 +34,20 @@ def inject_news_features(features, feature_columns, sentiment, emb_64):
         if name in col_idx:
             out[last, col_idx[name]] = float(emb_64[i])
     return out
+
+
+def score_news(text):
+    """Return (sentiment_score, emb_64) for a news text.
+
+    sentiment_score: float in [-1, 1] from FinBERT.
+    emb_64: PCA-compressed FinLang embedding (64 values).
+    """
+    from lib.features.sentiment import compute_sentiment_scores
+    from lib.features.embeddings import compute_embeddings
+    from dashboard.utils.model_loader import load_compressor
+
+    sentiment = float(compute_sentiment_scores([text])[0])
+    raw_emb = compute_embeddings([text])                 # 768-d vector
+    compressor = load_compressor()
+    emb_64 = compressor.transform(raw_emb.reshape(1, -1))[0]
+    return sentiment, emb_64
