@@ -10,8 +10,7 @@ _DSR_EXP = Path(__file__).resolve().parent.parent / "dsr_experiment"
 if str(_DSR_EXP) not in sys.path:
     sys.path.insert(0, str(_DSR_EXP))
 
-from dashboard.utils.news_impact import inject_news_features  # noqa: E402
-from dashboard.utils.news_impact import score_news  # noqa: E402
+from dashboard.utils.news_impact import inject_news_features, score_news  # noqa: E402
 
 
 def _columns():
@@ -23,34 +22,42 @@ def _columns():
     return cols
 
 
-def test_inject_sets_last_row_sentiment():
+def test_inject_sets_sentiment_in_all_rows():
     cols = _columns()
     features = np.zeros((10, len(cols)), dtype=np.float32)
     emb = np.arange(64, dtype=np.float32)
     out = inject_news_features(features, cols, sentiment=0.8, emb_64=emb)
-    last = out.shape[0] - 1
     for name in ("sentiment_mean", "sentiment_max", "sentiment_min"):
-        assert out[last, cols.index(name)] == pytest.approx(0.8)
-    assert out[last, cols.index("news_count")] == 1.0
+        assert np.all(out[:, cols.index(name)] == pytest.approx(0.8))
+    assert np.all(out[:, cols.index("news_count")] == 1.0)
 
 
-def test_inject_sets_embeddings():
+def test_inject_sets_embeddings_in_all_rows():
     cols = _columns()
     features = np.zeros((10, len(cols)), dtype=np.float32)
     emb = np.arange(64, dtype=np.float32)
     out = inject_news_features(features, cols, sentiment=0.0, emb_64=emb)
-    last = out.shape[0] - 1
     for i in range(64):
-        assert out[last, cols.index(f"emb_{i}")] == pytest.approx(float(i))
+        assert np.all(out[:, cols.index(f"emb_{i}")] == pytest.approx(float(i)))
 
 
-def test_inject_does_not_touch_other_rows():
+def test_inject_touches_every_row():
     cols = _columns()
     features = np.zeros((10, len(cols)), dtype=np.float32)
     out = inject_news_features(features, cols, sentiment=0.9,
                                emb_64=np.ones(64, dtype=np.float32))
-    # Every row except the last stays all-zero.
-    assert np.all(out[:-1] == 0.0)
+    # Every row's sentiment_mean is now 0.9 — no row left at zero.
+    assert np.all(out[:, cols.index("sentiment_mean")] == pytest.approx(0.9))
+
+
+def test_inject_leaves_price_columns_untouched():
+    cols = _columns()
+    features = np.ones((10, len(cols)), dtype=np.float32)
+    out = inject_news_features(features, cols, sentiment=0.5,
+                               emb_64=np.zeros(64, dtype=np.float32))
+    # Price/tech columns (rsi_14, macd) are not news columns — unchanged.
+    assert np.all(out[:, cols.index("rsi_14")] == 1.0)
+    assert np.all(out[:, cols.index("macd")] == 1.0)
 
 
 def test_inject_returns_copy():
@@ -65,12 +72,11 @@ def test_inject_returns_copy():
 
 def test_inject_zeroes_sentiment_std_and_spread():
     cols = _columns()
-    features = np.zeros((10, len(cols)), dtype=np.float32)
+    features = np.ones((10, len(cols)), dtype=np.float32)
     out = inject_news_features(features, cols, sentiment=0.8,
                                emb_64=np.ones(64, dtype=np.float32))
-    last = out.shape[0] - 1
-    assert out[last, cols.index("sentiment_std")] == 0.0
-    assert out[last, cols.index("sentiment_spread")] == 0.0
+    assert np.all(out[:, cols.index("sentiment_std")] == 0.0)
+    assert np.all(out[:, cols.index("sentiment_spread")] == 0.0)
 
 
 def test_inject_rejects_wrong_embedding_length():
