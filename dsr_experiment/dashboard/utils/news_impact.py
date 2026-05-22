@@ -51,3 +51,48 @@ def score_news(text):
     compressor = load_compressor()
     emb_64 = compressor.transform(raw_emb.reshape(1, -1))[0]
     return sentiment, emb_64
+
+
+def analyze_news_impact(text):
+    """Run the DQN ensemble with and without a news article injected.
+
+    Returns dict:
+      sentiment        — float in [-1, 1]
+      emb_64           — 64-d compressed embedding
+      decision_without — {"allocation", "votes", "total_seeds"}
+      decision_with    — same shape, with the news injected
+    """
+    from dashboard.utils.features_live import (
+        build_live_features, build_live_obs, expected_feature_columns,
+    )
+    from dashboard.utils.feed_decisions import _ensemble_on_obs, _fetch_ohlcv_cached
+    from dashboard.utils.model_catalog import list_model_entries
+    from dashboard.utils import snapshot
+
+    # 1. DQN ensemble model paths
+    entries = list_model_entries()
+    dqn_entry = next(e for e in entries if e.algo == "DQN")
+    models = snapshot.discover_models(dqn_entry.snapshot).get("DQN", [])
+    seeds_paths = [(m["seed"], m["path"]) for m in models]
+
+    # 2. Live features (news zero-filled)
+    ohlcv = _fetch_ohlcv_cached()
+    features, _prices, _debug = build_live_features(ohlcv)
+    columns = expected_feature_columns()
+
+    # 3. Decision WITHOUT the news
+    obs_base = build_live_obs(features, prev_allocation=0.0, window=30)
+    decision_without = _ensemble_on_obs(obs_base, seeds_paths, "DQN", 0.0)
+
+    # 4. Inject the news, decision WITH the news
+    sentiment, emb_64 = score_news(text)
+    features_news = inject_news_features(features, columns, sentiment, emb_64)
+    obs_news = build_live_obs(features_news, prev_allocation=0.0, window=30)
+    decision_with = _ensemble_on_obs(obs_news, seeds_paths, "DQN", 0.0)
+
+    return {
+        "sentiment": sentiment,
+        "emb_64": emb_64,
+        "decision_without": decision_without,
+        "decision_with": decision_with,
+    }
