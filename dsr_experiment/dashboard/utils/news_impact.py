@@ -73,15 +73,19 @@ def score_news_batch(texts):
     return {"per_news": per_news, "stats": stats, "emb_64": emb_64}
 
 
-def analyze_news_impact(texts):
-    """Run the DQN ensemble with and without the given news articles injected.
+def analyze_news_impact(background, tested):
+    """Run the DQN ensemble on a news background, with and without the tested news.
 
-    texts: list of news strings.
+    background: list of background news texts (may be empty).
+    tested: list of news texts whose marginal effect we measure (non-empty).
+    The tested news is analysed TOGETHER with the background — both are merged
+    into one aggregate before injection.
     Returns dict:
-      per_news         — list of (text, sentiment)
-      stats            — aggregate sentiment stats dict
-      decision_without — {"allocation", "votes", "total_seeds"}
-      decision_with    — same shape, with the news injected
+      tested_per_news  — list of (text, sentiment) for the tested news
+      background_count — number of background news
+      background_mean  — mean sentiment of the background (0 if empty)
+      decision_without — {"allocation", "votes", "total_seeds"} on the background
+      decision_with    — same shape, on background + tested news
     """
     from dashboard.utils.features_live import (
         build_live_features, build_live_obs, expected_feature_columns,
@@ -89,6 +93,9 @@ def analyze_news_impact(texts):
     from dashboard.utils.feed_decisions import _ensemble_on_obs, _fetch_ohlcv_cached
     from dashboard.utils.model_catalog import list_model_entries
     from dashboard.utils import snapshot
+
+    if not tested:
+        raise ValueError("tested news list is empty")
 
     entries = list_model_entries()
     dqn_entry = next(e for e in entries if e.algo == "DQN")
@@ -99,19 +106,29 @@ def analyze_news_impact(texts):
     features, _prices, _debug = build_live_features(ohlcv)
     columns = expected_feature_columns()
 
-    obs_base = build_live_obs(features, prev_allocation=0.0, window=30)
-    decision_without = _ensemble_on_obs(obs_base, seeds_paths, "DQN", 0.0)
+    # "Without": the background alone (or no news at all if background is empty).
+    if background:
+        bg = score_news_batch(background)
+        feat_without = inject_news_features(features, columns, bg["stats"], bg["emb_64"])
+        background_mean = bg["stats"]["sentiment_mean"]
+    else:
+        feat_without = features
+        background_mean = 0.0
+    obs_without = build_live_obs(feat_without, prev_allocation=0.0, window=30)
+    decision_without = _ensemble_on_obs(obs_without, seeds_paths, "DQN", 0.0)
 
-    scored = score_news_batch(texts)
-    features_news = inject_news_features(
-        features, columns, scored["stats"], scored["emb_64"]
+    # "With": background + tested news merged into one aggregate.
+    combined = score_news_batch(background + tested)
+    feat_with = inject_news_features(
+        features, columns, combined["stats"], combined["emb_64"]
     )
-    obs_news = build_live_obs(features_news, prev_allocation=0.0, window=30)
-    decision_with = _ensemble_on_obs(obs_news, seeds_paths, "DQN", 0.0)
+    obs_with = build_live_obs(feat_with, prev_allocation=0.0, window=30)
+    decision_with = _ensemble_on_obs(obs_with, seeds_paths, "DQN", 0.0)
 
     return {
-        "per_news": scored["per_news"],
-        "stats": scored["stats"],
+        "tested_per_news": combined["per_news"][len(background):],
+        "background_count": len(background),
+        "background_mean": background_mean,
         "decision_without": decision_without,
         "decision_with": decision_with,
     }

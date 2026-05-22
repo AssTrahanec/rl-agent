@@ -1,4 +1,4 @@
-"""News Analyzer — paste news articles, see how they shift the model's recommendation."""
+"""News Analyzer — measure how a tested news shifts the model's recommendation."""
 import sys
 from pathlib import Path
 
@@ -18,8 +18,8 @@ ensure_lib_on_path()
 st.set_page_config(page_title="Анализатор новости", layout="wide")
 st.title("Анализатор новости")
 st.caption(
-    "Вставьте новости — по одной на строку. Модель покажет, как новостной фон "
-    "меняет её решение. FinBERT обучен на английском — вставляйте англоязычный текст."
+    "Проверяемая новость анализируется вместе с новостным фоном. "
+    "FinBERT обучен на английском — вставляйте англоязычный текст."
 )
 
 PRESETS = {
@@ -38,15 +38,13 @@ PRESETS = {
 }
 _RECENT_LIMIT = 10
 
-if "news_text" not in st.session_state:
-    st.session_state.news_text = ""
+if "bg_text" not in st.session_state:
+    st.session_state.bg_text = ""
+if "tested_text" not in st.session_state:
+    st.session_state.tested_text = ""
 
-st.write("Готовые примеры (заменяют поле):")
-preset_cols = st.columns(len(PRESETS))
-for col, (label, text) in zip(preset_cols, PRESETS.items()):
-    if col.button(label, use_container_width=True):
-        st.session_state.news_text = text
-
+# --- Field 1: news background ---
+st.subheader("1. Новостной фон (необязательно)")
 if st.button("Взять последние новости из ленты", use_container_width=True):
     feed = load_cached_feed()
     if feed.empty:
@@ -54,28 +52,40 @@ if st.button("Взять последние новости из ленты", use
     else:
         recent = feed.sort_values("ts", ascending=False).head(_RECENT_LIMIT)
         lines = [f"{r.title}. {r.summary}".strip() for r in recent.itertuples()]
-        st.session_state.news_text = "\n".join(lines)
+        st.session_state.bg_text = "\n".join(lines)
+bg_text = st.text_area(
+    "Фоновые новости — по одной на строку (можно оставить пустым)",
+    height=140, key="bg_text",
+)
 
-news_text = st.text_area("Новости (по одной на строку)", height=200, key="news_text")
+# --- Field 2: tested news ---
+st.subheader("2. Проверяемая новость")
+preset_cols = st.columns(len(PRESETS))
+for col, (label, text) in zip(preset_cols, PRESETS.items()):
+    if col.button(label, use_container_width=True):
+        st.session_state.tested_text = text
+tested_text = st.text_area(
+    "Новость(и), эффект которой проверяем — по одной на строку",
+    height=110, key="tested_text",
+)
+
 analyze = st.button("Анализировать", type="primary")
 
 
 if analyze:
-    news_list = [ln.strip() for ln in news_text.splitlines() if ln.strip()]
-    if not news_list:
-        st.warning("Введите хотя бы одну новость или выберите пример.")
+    background = [ln.strip() for ln in bg_text.splitlines() if ln.strip()]
+    tested = [ln.strip() for ln in tested_text.splitlines() if ln.strip()]
+    if not tested:
+        st.warning("Введите проверяемую новость или выберите пример.")
         st.stop()
 
-    with st.spinner(
-        f"FinBERT оценивает {len(news_list)} новостей, "
-        f"ансамбль из 10 моделей считает решение..."
-    ):
-        result = analyze_news_impact(news_list)
+    with st.spinner("FinBERT оценивает новости, ансамбль из 10 моделей считает решение..."):
+        result = analyze_news_impact(background, tested)
 
-    # Block 1 — sentiment of each news item
+    # Block 1 — tested news sentiment + background summary
     st.divider()
-    st.subheader(f"Оценка новостей ({len(news_list)})")
-    for text, sent in result["per_news"]:
+    st.subheader("Проверяемая новость")
+    for text, sent in result["tested_per_news"]:
         if sent > 0.05:
             color = "#2ca02c"
         elif sent < -0.05:
@@ -90,9 +100,15 @@ if analyze:
             f'<span style="font-size:14px;">{preview}</span></div>',
             unsafe_allow_html=True,
         )
-    st.caption(f"Средняя тональность фона: {result['stats']['sentiment_mean']:+.2f}")
+    if result["background_count"] > 0:
+        st.caption(
+            f"Новостной фон: {result['background_count']} новостей, "
+            f"средняя тональность {result['background_mean']:+.2f}"
+        )
+    else:
+        st.caption("Фон пуст — сравнение идёт с состоянием без новостей.")
 
-    # Block 2 — ensemble vote, before vs after the news
+    # Block 2 — ensemble vote, background vs background + tested news
     votes_without = result["decision_without"].get("votes") or {}
     votes_with = result["decision_with"].get("votes") or {}
     total = result["decision_without"].get("total_seeds", 0)
@@ -106,8 +122,8 @@ if analyze:
         "или выйти в кэш. Ниже — сколько проголосовало за покупку."
     )
     c1, c2 = st.columns(2)
-    c1.metric("Без новостей", f"{buy_without} из {total}")
-    c2.metric("С новостями", f"{buy_with} из {total}",
+    c1.metric("Фон без проверяемой новости", f"{buy_without} из {total}")
+    c2.metric("Фон + проверяемая новость", f"{buy_with} из {total}",
               delta=f"{buy_with - buy_without:+d}")
 
     # Block 3 — plain-language verdict
@@ -115,15 +131,15 @@ if analyze:
     diff = buy_with - buy_without
     if diff <= -1:
         st.warning(
-            f"Новостной фон переубедил {abs(diff)} модель(и) уйти в кэш — "
+            f"Проверяемая новость переубедила {abs(diff)} модель(и) уйти в кэш — "
             f"совет склонился в сторону продажи."
         )
     elif diff >= 1:
         st.success(
-            f"Новостной фон склонил ещё {diff} модель(и) к покупке — "
+            f"Проверяемая новость склонила ещё {diff} модель(и) к покупке — "
             f"совет усилился в сторону покупки."
         )
     else:
         st.info(
-            "Новостной фон не изменил решение ансамбля — ценовой тренд перевесил."
+            "Проверяемая новость не изменила решение ансамбля поверх этого фона."
         )
