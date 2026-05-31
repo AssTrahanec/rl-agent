@@ -1,3 +1,11 @@
+# === DQN EXTRA SEEDS — train 7 new seeds with improved hyperparameters ===
+# Matches experiments/run_2026-04-20_discrete_trader/config.yaml, except:
+#   seeds = 7 NEW seeds (42,123,7 already trained in snapshot)
+#   algos = ["DQN"] only
+#   IMPROVEMENTS:
+#     learning_starts: 10000 -> 20000 (longer buffer warmup = stabler Q)
+#     target_update_interval: 1000 -> 5000 (stabler target network)
+
 # === DATA ===
 data:
   asset: "BTC/USDT"
@@ -40,7 +48,7 @@ features:
   news_count_lags: [1, 2]
   news_count_roll: 7
 
-# === ENV ===
+# === ENV === (discrete, matches discrete_trader snapshot)
 env:
   window: 30
   tx_cost: 0.001
@@ -49,15 +57,15 @@ env:
   volatility_penalty: 0.5
   dsr_eta: 0.01
   sentiment_lambda: 0.3
-  action_space_type: "discrete"   # "continuous" or "discrete"
+  action_space_type: "discrete"
 
-# === EXPERIMENT ===
+# === EXPERIMENT === (7 NEW seeds, DQN only)
 experiment:
-  seeds: [42, 123, 7]
-  algos: ["PPO", "DQN"]
+  seeds: [2024, 99, 1337, 555, 888, 2001, 31415]
+  algos: ["DQN"]
   oos_periods: ["oos_2024", "oos_2025"]
 
-# === AGENTS ===
+# === AGENTS === (PPO/SAC unused here but config_loader requires them)
 agent_sac:
   device: "cuda"
   total_timesteps: 200000
@@ -88,10 +96,11 @@ agent_ppo:
   clip_range: 0.2
   ent_coef: 0.01
   max_grad_norm: 0.5
-  use_sde: false   # MultiCategorical policy doesn't support gSDE
+  use_sde: false
   net_arch: [128, 128]
   activation_fn: "tanh"
 
+# === DQN === (IMPROVED: learning_starts 10k->20k, target_update 1k->5k)
 agent_dqn:
   device: "cuda"
   total_timesteps: 200000
@@ -99,12 +108,12 @@ agent_dqn:
   lr_schedule: "constant"
   buffer_size: 300000
   batch_size: 128
-  learning_starts: 10000
+  learning_starts: 20000      # IMPROVEMENT: 10000 -> 20000 (longer warmup)
   tau: 1.0
   gamma: 0.99
   train_freq: 4
   gradient_steps: 1
-  target_update_interval: 1000
+  target_update_interval: 5000   # IMPROVEMENT: 1000 -> 5000 (stabler target)
   exploration_fraction: 0.2
   exploration_final_eps: 0.05
   net_arch: [128, 128]

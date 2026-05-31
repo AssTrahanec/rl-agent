@@ -1,4 +1,4 @@
-"""Train SAC or PPO agent using a TradingEnv built from train features."""
+"""Train PPO / SAC / DQN agent using a TradingEnv built from train features."""
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -6,7 +6,7 @@ from typing import Union
 
 import numpy as np
 import torch
-from stable_baselines3 import PPO, SAC
+from stable_baselines3 import PPO, SAC, DQN
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
@@ -14,7 +14,7 @@ from lib.env import TradingEnv
 
 logger = logging.getLogger(__name__)
 
-ALGO_MAP = {"PPO": PPO, "SAC": SAC}
+ALGO_MAP = {"PPO": PPO, "SAC": SAC, "DQN": DQN}
 ACTIVATION_MAP = {"tanh": torch.nn.Tanh, "relu": torch.nn.ReLU}
 
 
@@ -52,6 +52,7 @@ def _build_env(cfg, features: np.ndarray, prices: np.ndarray, sentiment: np.ndar
         sentiment_signal=sentiment,
         sentiment_lambda=env_cfg.sentiment_lambda,
         dsr_eta=env_cfg.dsr_eta,
+        action_space_type=getattr(env_cfg, "action_space_type", "continuous"),
     )
 
 
@@ -80,6 +81,19 @@ def _algo_kwargs(algo: str, agent_cfg) -> dict:
             tau=agent_cfg.tau,
             use_sde=agent_cfg.use_sde,
         )
+    if algo == "DQN":
+        return dict(
+            gamma=agent_cfg.gamma,
+            batch_size=agent_cfg.batch_size,
+            buffer_size=agent_cfg.buffer_size,
+            learning_starts=agent_cfg.learning_starts,
+            train_freq=agent_cfg.train_freq,
+            gradient_steps=agent_cfg.gradient_steps,
+            target_update_interval=agent_cfg.target_update_interval,
+            exploration_fraction=agent_cfg.exploration_fraction,
+            exploration_final_eps=agent_cfg.exploration_final_eps,
+            tau=agent_cfg.tau,
+        )
     raise ValueError(algo)
 
 
@@ -94,11 +108,16 @@ def train_agent(
 ) -> Path:
     """Train one algo with one seed; return path to saved model."""
     assert algo in ALGO_MAP, f"unsupported algo: {algo}"
-    agent_cfg = cfg.agent_sac if algo == "SAC" else cfg.agent_ppo
+    if algo == "SAC":
+        agent_cfg = cfg.agent_sac
+    elif algo == "DQN":
+        agent_cfg = cfg.agent_dqn
+    else:
+        agent_cfg = cfg.agent_ppo
 
     env = _build_env(cfg, features, prices, sentiment)
     vec_env = DummyVecEnv([lambda: env])
-    if algo != "SAC":
+    if algo == "PPO":
         vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=5.0)
 
     lr: Union[float, callable] = agent_cfg.learning_rate

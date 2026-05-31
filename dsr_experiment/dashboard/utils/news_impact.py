@@ -74,23 +74,24 @@ def score_news_batch(texts):
 
 
 def analyze_news_impact(background, tested):
-    """Run the DQN ensemble on a news background, with and without the tested news.
+    """Сравнить решение ансамбля при текущем фоне vs «только проверяемая новость».
+
+    Зачем не background+tested:
+        Одна новость в агрегате из ~100 фоновых тонет — sentiment_mean,
+        embedding-средняя и прочие фичи почти не сдвигаются. Ансамбль
+        получает почти идентичную observation и даёт идентичный ответ.
+        Поэтому проверяем «вес» новости в чистом виде:
+          decision_without — что модель думает СЕЙЧАС (на текущем 5-дневном фоне).
+          decision_with    — что она думала бы, если бы единственным сигналом
+                             была эта новость.
 
     background: list of background news texts (may be empty).
-    tested: list of news texts whose marginal effect we measure (non-empty).
-    The tested news is analysed TOGETHER with the background — both are merged
-    into one aggregate before injection.
-    Returns dict:
-      tested_per_news  — list of (text, sentiment) for the tested news
-      background_count — number of background news
-      background_mean  — mean sentiment of the background (0 if empty)
-      decision_without — {"allocation", "votes", "total_seeds"} on the background
-      decision_with    — same shape, on background + tested news
+    tested: list of news texts whose pure effect we measure (non-empty).
     """
     from dashboard.utils.features_live import (
         build_live_features, build_live_obs, expected_feature_columns,
     )
-    from dashboard.utils.feed_decisions import _ensemble_on_obs, _fetch_ohlcv_cached
+    from dashboard.utils.feed_decisions import _run_ensemble, fetch_ohlcv
     from dashboard.utils.model_catalog import list_model_entries
     from dashboard.utils import snapshot
 
@@ -102,34 +103,34 @@ def analyze_news_impact(background, tested):
     models = snapshot.discover_models(dqn_entry.snapshot).get("DQN", [])
     seeds_paths = [(m["seed"], m["path"]) for m in models]
 
-    ohlcv = _fetch_ohlcv_cached()
+    ohlcv = fetch_ohlcv()
     features, _prices, _debug = build_live_features(ohlcv)
     columns = expected_feature_columns()
 
-    # "Without": the background alone (or no news at all if background is empty).
+    # «Без» — модель видит текущий новостной фон последних 5 дней (как есть).
     if background:
         bg = score_news_batch(background)
         feat_without = inject_news_features(features, columns, bg["stats"], bg["emb_64"])
         background_mean = bg["stats"]["sentiment_mean"]
-        background_per_news = bg["per_news"]
     else:
         feat_without = features
         background_mean = 0.0
-        background_per_news = []
     obs_without = build_live_obs(feat_without, prev_allocation=0.0, window=30)
-    decision_without = _ensemble_on_obs(obs_without, seeds_paths, "DQN", 0.0)
+    decision_without = _run_ensemble(obs_without, seeds_paths, "DQN", 0.0)
 
-    # "With": background + tested news merged into one aggregate.
-    combined = score_news_batch(background + tested)
+    # «С» — модель видит ТОЛЬКО проверяемую новость как единственный сигнал.
+    # Это и есть «чистый вес» новости. Фон тут принципиально не учитывается,
+    # чтобы новость не растворилась в усреднении.
+    tested_only = score_news_batch(tested)
     feat_with = inject_news_features(
-        features, columns, combined["stats"], combined["emb_64"]
+        features, columns, tested_only["stats"], tested_only["emb_64"]
     )
     obs_with = build_live_obs(feat_with, prev_allocation=0.0, window=30)
-    decision_with = _ensemble_on_obs(obs_with, seeds_paths, "DQN", 0.0)
+    decision_with = _run_ensemble(obs_with, seeds_paths, "DQN", 0.0)
 
     return {
-        "tested_per_news": combined["per_news"][len(background):],
-        "background_per_news": background_per_news,
+        "tested_per_news": tested_only["per_news"],
+        "tested_stats": tested_only["stats"],
         "background_count": len(background),
         "background_mean": background_mean,
         "decision_without": decision_without,

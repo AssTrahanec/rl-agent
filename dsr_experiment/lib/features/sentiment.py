@@ -30,7 +30,6 @@ def compute_sentiment_scores(texts: List[str], model: Optional[object] = None) -
     if not texts:
         return []
     pipe = model if model is not None else _get_pipeline()
-    truncated = [t[:512] for t in texts]
-    results = pipe(truncated, truncation=True, max_length=512)
+    results = pipe(texts, truncation=True, max_length=512)
     label_map = {"positive": 1.0, "negative": -1.0, "neutral": 0.0}
     return [float(r["score"] * label_map.get(r["label"].lower(), 0.0)) for r in results]

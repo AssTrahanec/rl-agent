@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 def load_model(model_path: str):
-    from stable_baselines3 import PPO, SAC
-    for cls in (PPO, SAC):
+    from stable_baselines3 import PPO, SAC, DQN
+    for cls in (PPO, SAC, DQN):
         try:
             return cls.load(model_path, device="cpu")
         except Exception:
@@ -29,10 +29,12 @@ def run_backtest(
     tx_cost: float = 0.001,
     allow_short: bool = False,
     vecnorm_path: Optional[str] = None,
+    action_space_type: str = "continuous",
 ) -> dict:
     env = TradingEnv(
         features=features, prices=prices,
         window=window, tx_cost=tx_cost, allow_short=allow_short,
+        action_space_type=action_space_type,
     )
 
     use_vecnorm = vecnorm_path is not None and Path(vecnorm_path).exists()
@@ -71,10 +73,11 @@ def run_backtest(
             allocations.append(allocation)
 
     daily_returns = np.array(daily_returns)
+    allocations_arr = np.array(allocations)
     equity_curve = np.insert(np.cumprod(1 + daily_returns), 0, 1.0)
     return {
-        "metrics": compute_metrics(daily_returns),
+        "metrics": compute_metrics(daily_returns, allocations=allocations_arr),
         "daily_returns": daily_returns,
-        "allocations": np.array(allocations),
+        "allocations": allocations_arr,
         "equity_curve": equity_curve,
     }

@@ -66,6 +66,7 @@ class EnvConfig:
     volatility_penalty: float
     dsr_eta: float
     sentiment_lambda: float
+    action_space_type: str = "continuous"
 
 
 @dataclass
@@ -114,6 +115,26 @@ class PPOConfig:
 
 
 @dataclass
+class DQNConfig:
+    device: str
+    total_timesteps: int
+    learning_rate: float
+    lr_schedule: str
+    buffer_size: int
+    batch_size: int
+    learning_starts: int
+    tau: float
+    gamma: float
+    train_freq: int
+    gradient_steps: int
+    target_update_interval: int
+    exploration_fraction: float
+    exploration_final_eps: float
+    net_arch: List[int]
+    activation_fn: str
+
+
+@dataclass
 class Config:
     data: DataConfig
     periods: Dict[str, Period]
@@ -125,6 +146,7 @@ class Config:
     experiment: ExperimentConfig
     agent_sac: SACConfig
     agent_ppo: PPOConfig
+    agent_dqn: "DQNConfig | None" = None
 
     def oos_features_path(self, period_key: str) -> str:
         return f"{self.data.paths.oos_dir}/{period_key}_features.parquet"
@@ -149,6 +171,7 @@ def load_config(path: str) -> Config:
         experiment=ExperimentConfig(**raw["experiment"]),
         agent_sac=SACConfig(**raw["agent_sac"]),
         agent_ppo=PPOConfig(**raw["agent_ppo"]),
+        agent_dqn=DQNConfig(**raw["agent_dqn"]) if "agent_dqn" in raw else None,
     )
     _validate(cfg)
     return cfg
@@ -165,7 +188,11 @@ def _validate(cfg: Config) -> None:
     if cfg.env.reward_type not in {"basic", "risk_adjusted", "dsr"}:
         raise ValueError(f"env.reward_type invalid: {cfg.env.reward_type}")
     for algo in cfg.experiment.algos:
-        if algo not in {"SAC", "PPO"}:
-            raise ValueError(f"experiment.algos: only SAC/PPO supported, got '{algo}'")
+        if algo not in {"SAC", "PPO", "DQN"}:
+            raise ValueError(f"experiment.algos: only SAC/PPO/DQN supported, got '{algo}'")
+        if algo == "DQN" and cfg.agent_dqn is None:
+            raise ValueError("algos includes DQN but agent_dqn config missing")
+        if algo == "DQN" and cfg.env.action_space_type != "discrete":
+            raise ValueError("DQN requires env.action_space_type='discrete'")
     if cfg.embeddings.compressed_dim > cfg.embeddings.raw_dim:
         raise ValueError("embeddings.compressed_dim must be <= raw_dim")

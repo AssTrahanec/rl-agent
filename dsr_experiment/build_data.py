@@ -95,6 +95,8 @@ def _attach_nlp_features(
     result["news_count"] = 0
     result["sentiment_max"] = 0.0
     result["sentiment_min"] = 0.0
+    result["sentiment_mean"] = 0.0
+    result["sentiment_std"] = 0.0
     result["sentiment_spread"] = 0.0
 
     news_4h = preprocess_news_4h(news_slice)
@@ -113,25 +115,95 @@ def _attach_nlp_features(
             continue
         result.loc[ws, "sentiment_max"] = max(scores)
         result.loc[ws, "sentiment_min"] = min(scores)
+        result.loc[ws, "sentiment_mean"] = float(np.mean(scores))
+        result.loc[ws, "sentiment_std"] = float(np.std(scores)) if len(scores) > 1 else 0.0
         result.loc[ws, "sentiment_spread"] = max(scores) - min(scores)
 
         raw_embs = st_model.encode(texts, show_progress_bar=False)
         texts2, scores2, raw_embs2 = deduplicate_embeddings(
             texts, scores, raw_embs, threshold=cfg.news.dedup_threshold,
         )
-        weights = [abs(s) + 0.1 for s in scores2]
-        w = np.array(weights, dtype=np.float32)
-        w = w / w.sum() if w.sum() > 0 else np.ones_like(w) / len(w)
-        mean_emb = np.average(raw_embs2, axis=0, weights=w).astype(np.float32)
-        compressed = compressor.transform(mean_emb.reshape(1, -1))[0]
+        signed_w = np.array([s + np.sign(s) * 0.1 if s != 0 else 0.1 for s in scores2], dtype=np.float32)
+        denom = np.abs(signed_w).sum()
+        if denom > 0:
+            signed_w = signed_w / denom
+        else:
+            signed_w = np.ones_like(signed_w) / len(signed_w)
+        agg_emb = (raw_embs2 * signed_w[:, None]).sum(axis=0).astype(np.float32)
+        compressed = compressor.transform(agg_emb.reshape(1, -1))[0]
         result.loc[ws, emb_cols] = compressed
 
     logger.info(f"Matched {matched}/{len(news_4h)} 4h news windows to OHLCV")
 
     result = add_lag_features(result, columns=["news_count"], lags=cfg.features.news_count_lags)
-    result = add_rolling_features(result, columns=["news_count"], window=cfg.features.news_count_roll)
+    result = add_rolling_features(result, columns=["news_count", "sentiment_mean"], window=cfg.features.news_count_roll)
     top_pca_cols = [f"emb_{i}" for i in range(cfg.embeddings.top_pca_lags)]
     result = add_lag_features(result, columns=top_pca_cols, lags=cfg.features.news_count_lags)
+    return result
+
+
+def _attach_nlp_features_minimal(
+    baseline: pd.DataFrame,
+    news_slice: pd.DataFrame,
+    cfg: Config,
+    compressor: EmbeddingCompressor,
+) -> pd.DataFrame:
+    """Минимальная NLP-обработка: одна скалярная тональность + PCA-эмбеддинги.
+
+    Сохраняет ключевые элементы методики работы — FinBERT-тональность
+    и FinLang-эмбеддинги, — но удаляет избыточные признаки:
+        - 5 sentiment-агрегатов (max, min, std, spread, news_count) → 1 (mean);
+        - лаги (news_count_lag_1/2, emb_0/1/2_lag_1/2) → нет;
+        - rolling-средние (news_count_rolling_7, sentiment_mean_rolling_7) → нет.
+
+    Соответствует подходу FinRL (Liu et al., 2021) к sentiment + рекомендациям
+    Delft TU (2025) о вреде избыточных признаков в DRL для трейдинга.
+
+    Не используется в основном pipeline; оставлена для документации
+    и сравнения с расширенной версией `_attach_nlp_features`.
+
+    На вход:
+        baseline    — таблица с ценовыми признаками;
+        news_slice  — корпус новостей для периода;
+        cfg         — конфигурация (нужна для размерности эмбеддингов);
+        compressor  — обученный PCA-компрессор.
+
+    На выход:
+        DataFrame с колонками:
+          - sentiment_mean — средняя тональность окна в [-1, +1];
+          - emb_0 ... emb_63 — PCA-сжатый смысловой вектор новостей окна.
+    """
+    result = baseline.copy()
+    emb_cols = [f"emb_{i}" for i in range(cfg.embeddings.compressed_dim)]
+    for c in emb_cols:
+        result[c] = 0.0
+    result["sentiment_mean"] = 0.0
+
+    news_4h = preprocess_news_4h(news_slice)
+    st_model = _get_model(cfg.embeddings.model_name)
+
+    for _, row in news_4h.iterrows():
+        ws = row["date"]
+        texts = row["texts"]
+        if ws not in result.index:
+            continue
+        scores = compute_sentiment_scores(texts)
+        if not scores:
+            continue
+        result.loc[ws, "sentiment_mean"] = float(np.mean(scores))
+
+        # Эмбеддинги — взвешенное среднее по тональности, PCA-сжатие
+        raw_embs = st_model.encode(texts, show_progress_bar=False)
+        signed_w = np.array(
+            [s + np.sign(s) * 0.1 if s != 0 else 0.1 for s in scores],
+            dtype=np.float32,
+        )
+        denom = np.abs(signed_w).sum()
+        signed_w = signed_w / denom if denom > 0 else np.ones_like(signed_w) / len(signed_w)
+        agg_emb = (raw_embs * signed_w[:, None]).sum(axis=0).astype(np.float32)
+        compressed = compressor.transform(agg_emb.reshape(1, -1))[0]
+        result.loc[ws, emb_cols] = compressed
+
     return result
 
 

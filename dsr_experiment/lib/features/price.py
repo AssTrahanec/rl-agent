@@ -46,6 +46,60 @@ def fetch_ohlcv(
     return df
 
 
+def add_technical_indicators_minimal(df: pd.DataFrame) -> pd.DataFrame:
+    """Минимальный набор из 8 индикаторов по литературному стандарту.
+
+    Покрывает основные категории рынка по одному индикатору на категорию:
+    тренд (EMA-26), momentum (MACD), mean-reversion (RSI-14),
+    расширение волатильности (BB width), модуль волатильности (ATR-14),
+    объём (OBV), позиция в диапазоне (Stoch %K), доходность (return_1d).
+
+    Соответствует рекомендациям FinRL (Liu et al., 2021) и Delft TU (2025)
+    о том, что избыточные индикаторы в категориях momentum и volatility
+    приводят к переобучению DQN на временных рядах.
+    """
+    df = df.copy()
+    close = df["close"]
+    high = df["high"]
+    low = df["low"]
+    volume = df["volume"]
+
+    df["ema_26"] = close.ewm(span=26, adjust=False).mean()
+
+    ema_12 = close.ewm(span=12, adjust=False).mean()
+    df["macd"] = ema_12 - df["ema_26"]
+
+    delta = close.diff()
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+    avg_gain = gain.ewm(com=13, adjust=False).mean()
+    avg_loss = loss.ewm(com=13, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    df["rsi_14"] = 100 - (100 / (1 + rs))
+
+    sma_20 = close.rolling(20).mean()
+    std_20 = close.rolling(20).std()
+    df["bb_width"] = (4 * std_20) / sma_20
+
+    tr1 = high - low
+    tr2 = (high - close.shift()).abs()
+    tr3 = (low - close.shift()).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    df["atr_14"] = tr.ewm(com=13, adjust=False).mean()
+
+    direction = np.sign(close.diff()).fillna(0)
+    df["obv"] = (direction * volume).cumsum()
+
+    lowest_low = low.rolling(14).min()
+    highest_high = high.rolling(14).max()
+    denom = (highest_high - lowest_low).replace(0, np.nan)
+    df["stoch_k"] = 100 * (close - lowest_low) / denom
+
+    df["return_1d"] = close.pct_change()
+
+    return df
+
+
 def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """Compute ~20 technical indicators."""
     df = df.copy()
