@@ -20,6 +20,19 @@
 
 ---
 
+## Readability bar (applies to EVERY task — this is the point)
+
+The goal is code a thesis advisor can explain **on sight**, без замудрёностей. For every edit:
+- **Delete before adding.** Prefer removing code to introducing a new helper/abstraction/branch.
+- **Plain names, no cleverness.** No dense one-liners, no implicit magic. `step_returns`, not `dr`.
+- **One-sentence docstring per function:** what it does + why.
+- **Comment non-obvious math even if it stays** (1–2 lines, plain language): the DSR update in `env._compute_dsr` (Moody & Saffell differential Sharpe) and the sentiment-weighted embedding pooling in `_attach_nlp_features_minimal`.
+- **No new config knobs.** A value that never varies becomes a named constant, not a parameter.
+- **Stay in scope, but flag tangles.** If you notice a remaining "why is this here?" knot while editing a file (e.g. the CSV-merge in `run.py::oos_phase`), note it for the user — don't silently rewrite outside the task.
+- A task isn't done if the diff is *correct but harder to read* than what it replaced.
+
+---
+
 ## Expected minimal feature schema (the contract for the whole plan)
 
 After Phase 1, the model's feature matrix (what `lib/data_loader.py` returns, i.e. all columns except `open/high/low/close/volume/raw_close`) must be **exactly these 41 columns**:
