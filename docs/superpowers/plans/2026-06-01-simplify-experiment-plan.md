@@ -33,6 +33,39 @@ The goal is code a thesis advisor can explain **on sight**, без замудр�
 
 ---
 
+## Testing strategy (AUTHORITATIVE — supersedes any per-task `Test:` / `pytest` line below)
+
+Discovered at execution time: the repo-root `tests/` are **mixed**. Only **two** existing tests target `dsr_experiment` (they self-inject the folder onto `sys.path` and `import from lib`): `tests/test_dsr_metrics.py` and `tests/test_interpretability.py`. **Every other `tests/*` imports `from src…` and tests the OLD `src/` pipeline — irrelevant to this plan.** `tests/test_walkforward.py` (src) is **pre-broken** (imports a non-existent `scripts.run_walkforward`) and breaks whole-suite collection — exclude it; fixing it is out of scope (flag to user).
+
+**Every NEW dsr_experiment test starts with this exact header** (copied from `test_dsr_metrics.py`):
+```python
+import sys
+from pathlib import Path
+_DSR_EXP = Path(__file__).resolve().parent.parent / "dsr_experiment"
+if str(_DSR_EXP) not in sys.path:
+    sys.path.insert(0, str(_DSR_EXP))
+from lib.something import ...  # noqa: E402
+```
+
+**The dsr_experiment test set (run THIS, never the whole suite):**
+
+| File | Status | Covers |
+|---|---|---|
+| `tests/test_dsr_metrics.py` | exists | lib.metrics; **Task 10 adds** the √2190 annualization test here (do **not** create `tests/test_metrics.py` — that name is a src test) |
+| `tests/test_interpretability.py` | exists | lib.interpretability; **Task 9** removes the deleted-fn tests **and the top-level import of them** |
+| `tests/test_minimal_features.py` | NEW (Task 1/2) | 8-indicator set + built 41-col schema |
+| `tests/test_dsr_smoke.py` | NEW (Task 4) | end-to-end: TradingEnv → DQN train (~300 steps, synthetic) → backtest → metrics. **Regression guard** kept green through Phases 2–3 |
+| `tests/test_dsr_config.py` | NEW (Task 7) | `load_config` → `algos==['DQN']`, `compressed_dim==32`, no `reward_type`/`agent_ppo` |
+
+**Canonical run command (the dsr_experiment subset):**
+```
+venv/Scripts/python.exe -m pytest tests/test_dsr_metrics.py tests/test_interpretability.py tests/test_minimal_features.py tests/test_dsr_smoke.py tests/test_dsr_config.py -q -p no:cacheprovider
+```
+
+**Per-task verification (replaces wrong `Test:` references):** Task 1/2 → `test_minimal_features.py`; Task 4 → **create** `test_dsr_smoke.py` (TDD) + env import smoke; Task 5 → smoke stays green + `assert 'PPO' not in ALGO_MAP`; Task 6 → smoke green + `run.py --help` lists only SAC/DQN; Task 7 → **create** `test_dsr_config.py`; Task 8 → `import build_data` smoke; Task 9 → `test_interpretability.py`; Task 10 → add to `test_dsr_metrics.py`.
+
+---
+
 ## Expected minimal feature schema (the contract for the whole plan)
 
 After Phase 1, the model's feature matrix (what `lib/data_loader.py` returns, i.e. all columns except `open/high/low/close/volume/raw_close`) must be **exactly these 41 columns**:
@@ -56,10 +89,10 @@ Observation dim = `window * n_features + 1 = 30 * 41 + 1 = 1231`.
 
 **Files:** none modified (recording only).
 
-- [ ] **Step 1: Run the full test suite, record the pass count**
+- [ ] **Step 1: Run the dsr_experiment test subset, record the pass count**
 
-Run: `venv/Scripts/python.exe -m pytest tests/ -q --ignore=tests/test_finetune_finbert.py 2>&1 | tail -15`
-Expected: all pass. **Write down the number** (e.g. "94 passed") — Phase 2/3 must not reduce it except where a test is intentionally updated.
+Run: `venv/Scripts/python.exe -m pytest tests/test_dsr_metrics.py tests/test_interpretability.py -q -p no:cacheprovider 2>&1 | tail -15`
+Expected: all pass. **Write down the number.** (The full `tests/` suite is mostly old-`src/` tests + a pre-broken `test_walkforward.py`; it is out of scope — see Testing strategy.)
 
 - [ ] **Step 2: Snapshot the current defended OOS metrics**
 
@@ -88,10 +121,17 @@ git -C C:/Users/ilya/Desktop/rl/rl-agent commit --allow-empty -m "chore: baselin
 Create `tests/test_minimal_features.py`:
 
 ```python
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
-from dsr_experiment.lib.features.price import add_technical_indicators_minimal
+_DSR_EXP = Path(__file__).resolve().parent.parent / "dsr_experiment"
+if str(_DSR_EXP) not in sys.path:
+    sys.path.insert(0, str(_DSR_EXP))
+
+from lib.features.price import add_technical_indicators_minimal  # noqa: E402
 
 EXPECTED_INDICATORS = [
     "ema_26", "macd", "rsi_14", "bb_width", "atr_14", "obv", "stoch_k", "return_1d",
