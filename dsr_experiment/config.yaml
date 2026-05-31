@@ -26,7 +26,7 @@ news:
 embeddings:
   model_name: "FinLang/finance-embeddings-investopedia"
   raw_dim: 768
-  compressed_dim: 64
+  compressed_dim: 32
   top_pca_lags: 3
   temporal_decay_alpha: 0.1
 
