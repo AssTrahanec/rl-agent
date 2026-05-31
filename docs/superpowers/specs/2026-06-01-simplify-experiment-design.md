@@ -46,6 +46,7 @@ small dataset → DQN trains faster, overfits less) — so the algorithm choice 
 | D8 | Bootstrap | Keep as-is (already 37 lines); only re-point to the kept metrics |
 | D9 | Dashboard | Keep all 3 pages' **functionality**; simplify the **code** (remove fragile/duplicate bits), re-align to the new feature schema |
 | D10 | SAC | **Not** retrained — leave on old features (out of scope for this pass) |
+| D11 | Sharpe annualization | **Fix** to √2190 (per-4h-bar returns, 24/7 crypto). Unify the two inconsistent annualization conventions in `metrics.py` onto one (2190). Keeps all metric outputs; corrects a ~2.45× under-statement. |
 
 ---
 
@@ -74,15 +75,36 @@ Notes:
 
 ---
 
-## 4. Metrics & bootstrap (light touch — nothing removed)
+## 4. Metrics & bootstrap (keep all metrics; fix one correctness bug)
 
-- `lib/metrics.py`: **keep all 9 metrics.** Readability pass only: name the two
-  annualization constants clearly and add a one-line comment on *why* there are two
-  conventions (`TRADING_DAYS_PER_YEAR=365` for Calmar's annual return vs
-  `PERIODS_PER_YEAR_4H=2190` for 4h-bar annualized return), so it reads as a
-  deliberate choice rather than an accident. No metric dropped.
-- `lib/bootstrap.py`: keep; it already computes only Sharpe + total_return CI across
-  seeds. No change beyond confirming the metric names still exist.
+This came out of the exa research pass (QuantStart, ml4trading.io, Lo 2002).
+
+- **P1 — annualization fix.** `run_backtest` produces **per-4h-bar** returns, but
+  `lib/metrics.py` annualizes Sharpe/Sortino with `√365` while annualizing return
+  with `√2190` in the *same* file — internally inconsistent, and the Sharpe is
+  **~2.45× too low** (√(2190/365)=√6). Fix: **unify on the 2190 convention** (24/7
+  crypto = 6 four-hour bars/day × 365):
+  - `sharpe`, `sortino`: `× √2190` (was √365).
+  - `annual_return` (used by Calmar): exponent `2190/n` (was `365/n`).
+  - `calmar = annualized_return / max_dd`, reusing the single 2190-based annual
+    return — **delete the duplicate 365-based `annual_return`** and the
+    `TRADING_DAYS_PER_YEAR` constant. One annualization constant remains.
+  - **All metric outputs kept** (total/annualized return, Sharpe, Sortino, MaxDD,
+    Calmar, win_rate, profit_factor, time_in_market). This is correctness +
+    simplification, not a cut.
+  - Effect: absolute Sharpe/Sortino rise ~2.45× (DQN 2025 ~0.79→~1.93, BH
+    ~0.50→~1.22). **Relative ranking, t-tests, bootstrap CIs are unchanged** (same
+    factor on every strategy). All slide/thesis Sharpe figures must be updated to
+    the new convention (Phase 5).
+- **P2 — rename.** In `lib/backtest.py`, `daily_returns` → `step_returns` (the series
+  is per-4h-bar, not daily) — removes a "why daily?" confusion.
+- **P3 — no-leakage note.** The rolling z-score is strictly trailing (causal, window
+  [t−29, t]) and the PCA compressor is fit **train-only** → no look-ahead. This is
+  *already correct*; we just state it explicitly in `code_walkthrough.md` to preempt
+  the #1 reviewer question (forward-contaminated normalization is the top leakage
+  channel in the literature).
+- `lib/bootstrap.py`: unchanged in logic (Sharpe + total_return CI across seeds);
+  benefits automatically from the corrected Sharpe.
 
 ---
 
@@ -107,11 +129,13 @@ Notes:
 | `lib/interpretability.py`, `scripts/run_permutation.py` | Drop unused `action_feature_correlation`, `action_distribution_by_sentiment_regime`. |
 | `config.yaml`, `lib/config_loader.py` | Remove `agent_ppo`, `env.reward_type/allow_short/volatility_penalty/dsr_eta`, `agent_sac.use_sde`, `news.text_col/date_col`, `embeddings.top_pca_lags`, `features.news_count_lags/news_count_roll`; matching dataclass cleanup. |
 
-### Phase 3 — Metrics/bootstrap readability (no cuts)
+### Phase 3 — Metrics correctness + readability (no metric dropped)
 | File | Change |
 |---|---|
-| `lib/metrics.py` | Comment/clarify the two annualization conventions. Keep all metrics. |
-| `lib/bootstrap.py` | Confirm only; minimal/no change. |
+| `lib/metrics.py` | **Fix annualization (P1):** unify on √2190 — `sharpe`/`sortino` ×√2190; `annual_return` exponent 2190/n; `calmar = annualized_return/max_dd`; delete the duplicate 365-based annual_return and `TRADING_DAYS_PER_YEAR`. Keep all metric outputs. |
+| `lib/backtest.py` | **Rename (P2):** `daily_returns` → `step_returns`. (Also loses `allow_short`/`action_space_type` defaults — see Phase 2.) |
+| `lib/bootstrap.py` | No logic change; verify it still reads `sharpe_ratio` + `total_return`. |
+| `tests/test_dsr_metrics.py` (or equiv.) | Update expected Sharpe/Sortino to √2190 scaling; add an assertion that a known per-bar series annualizes with √2190. |
 
 ### Phase 4 — Dashboard (functionality kept, code simplified)
 | File | Change |
@@ -126,7 +150,8 @@ Notes:
 ### Phase 5 — Docs + final verification
 | File | Change |
 |---|---|
-| `dsr_experiment/vkr_defense/code_walkthrough.md`, `README.md`, `dashboard/README.md` | Sync to: DQN-only, DSR-only, 41-feature minimal set, new metrics wording. Fix the SAC/PPO/DQN drift. |
+| `dsr_experiment/vkr_defense/code_walkthrough.md`, `README.md`, `dashboard/README.md` | Sync to: DQN-only, DSR-only, 41-feature minimal set. Fix the SAC/PPO/DQN drift. **Add the no-leakage note (P3)** (trailing z-score + train-only PCA). **Update every Sharpe/Sortino figure to the √2190 convention** (P1). |
+| Defense artifacts (slides/thesis text, `results/figures/`) | Out of code scope, but flag for the user: all Sharpe/Sortino numbers and any regenerated figures must move to the √2190 convention; relative claims/CIs are unchanged. |
 | (run) | Full test suite green; smoke-build; dashboard launches against new snapshot. |
 
 ---
@@ -156,11 +181,14 @@ the result?) is Phase 1 and gates everything after it.
 After the Phase-1 DQN×5 retrain, compute OOS metrics and compare to the defended
 baseline (memory `vkr_state.md`):
 
-- **Primary (must hold):** on **OOS 2025**, DQN mean Sharpe is **> Buy & Hold
-  (0.50)** and ideally still **> 0** with a positive margin; MaxDD remains
-  materially below BH's 30.6%. The defended figure was Sharpe 0.79 ± 0.22,
-  CI [0.66; 0.92]. We accept "holds" if mean Sharpe stays clearly above BH and the
-  drawdown advantage persists (5-seed CI will be wider than the 10-seed one).
+- **Primary (must hold):** on **OOS 2025**, DQN mean Sharpe is **> the Buy & Hold
+  computed in the same run** with a positive margin, and MaxDD stays materially
+  below BH's (~30.6%). Compare against the **recomputed** BH, not the historical
+  √365-era figure (0.50): after the P1 fix everything is in √2190 units, so the
+  comparison is unit-independent (both scale by the same √6). The defended result
+  was Sharpe 0.79 ± 0.22, CI [0.66; 0.92] in √365 units (≈1.93 in √2190). We accept
+  "holds" if mean Sharpe stays clearly above BH and the drawdown advantage persists
+  (5-seed CI will be wider than the 10-seed one).
 - **Secondary (report, not gate):** OOS 2024 behaves as before (active strategies
   ≤ BH Sharpe in the bull phase, drawdown controlled) — i.e. the phase-dependence
   story is intact.
