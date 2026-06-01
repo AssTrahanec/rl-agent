@@ -1,4 +1,4 @@
-"""Train PPO / SAC / DQN agent using a TradingEnv built from train features."""
+"""Train SAC / DQN agent using a TradingEnv built from train features."""
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -6,15 +6,15 @@ from typing import Union
 
 import numpy as np
 import torch
-from stable_baselines3 import PPO, SAC, DQN
+from stable_baselines3 import SAC, DQN
 from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import DummyVecEnv
 
 from lib.env import TradingEnv
 
 logger = logging.getLogger(__name__)
 
-ALGO_MAP = {"PPO": PPO, "SAC": SAC, "DQN": DQN}
+ALGO_MAP = {"SAC": SAC, "DQN": DQN}
 ACTIVATION_MAP = {"tanh": torch.nn.Tanh, "relu": torch.nn.ReLU}
 
 
@@ -46,29 +46,13 @@ def _build_env(cfg, features: np.ndarray, prices: np.ndarray, sentiment: np.ndar
         prices=prices,
         window=env_cfg.window,
         tx_cost=env_cfg.tx_cost,
-        reward_type=env_cfg.reward_type,
-        allow_short=env_cfg.allow_short,
-        volatility_penalty=env_cfg.volatility_penalty,
         sentiment_signal=sentiment,
         sentiment_lambda=env_cfg.sentiment_lambda,
-        dsr_eta=env_cfg.dsr_eta,
-        action_space_type=getattr(env_cfg, "action_space_type", "continuous"),
+        action_space_type=getattr(env_cfg, "action_space_type", "discrete"),
     )
 
 
 def _algo_kwargs(algo: str, agent_cfg) -> dict:
-    if algo == "PPO":
-        return dict(
-            n_steps=agent_cfg.n_steps,
-            batch_size=agent_cfg.batch_size,
-            n_epochs=agent_cfg.n_epochs,
-            gamma=agent_cfg.gamma,
-            gae_lambda=agent_cfg.gae_lambda,
-            clip_range=agent_cfg.clip_range,
-            ent_coef=agent_cfg.ent_coef,
-            max_grad_norm=agent_cfg.max_grad_norm,
-            use_sde=agent_cfg.use_sde,
-        )
     if algo == "SAC":
         return dict(
             gamma=agent_cfg.gamma,
@@ -106,19 +90,12 @@ def train_agent(
     sentiment: np.ndarray,
     models_dir: str = "models",
 ) -> Path:
-    """Train one algo with one seed; return path to saved model."""
+    """Train one algo (SAC or DQN) with one seed; return path to saved model."""
     assert algo in ALGO_MAP, f"unsupported algo: {algo}"
-    if algo == "SAC":
-        agent_cfg = cfg.agent_sac
-    elif algo == "DQN":
-        agent_cfg = cfg.agent_dqn
-    else:
-        agent_cfg = cfg.agent_ppo
+    agent_cfg = cfg.agent_sac if algo == "SAC" else cfg.agent_dqn
 
     env = _build_env(cfg, features, prices, sentiment)
     vec_env = DummyVecEnv([lambda: env])
-    if algo == "PPO":
-        vec_env = VecNormalize(vec_env, norm_obs=True, norm_reward=True, clip_obs=5.0)
 
     lr: Union[float, callable] = agent_cfg.learning_rate
     if agent_cfg.lr_schedule == "linear":
@@ -153,8 +130,5 @@ def train_agent(
     model_path = save_dir / "model.zip"
     model.save(str(model_path.with_suffix("")))
     logger.info(f"Saved model to {model_path}")
-
-    if isinstance(vec_env, VecNormalize):
-        vec_env.save(str(save_dir / "vecnormalize.pkl"))
 
     return model_path

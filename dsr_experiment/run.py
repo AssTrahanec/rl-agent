@@ -84,21 +84,17 @@ def oos_phase(
         rows = []
         for algo in algos:
             for path, seed in zip(model_paths[algo], cfg.experiment.seeds):
-                vecnorm = path.parent / "vecnormalize.pkl"
                 try:
                     res = run_backtest(
                         features=features, prices=prices,
                         model_path=str(path),
                         window=cfg.env.window,
                         tx_cost=cfg.env.tx_cost,
-                        allow_short=cfg.env.allow_short,
-                        vecnorm_path=str(vecnorm) if vecnorm.exists() else None,
-                        action_space_type=getattr(cfg.env, "action_space_type", "continuous"),
+                        action_space_type=getattr(cfg.env, "action_space_type", "discrete"),
                     )
                     m = res["metrics"]
                     rows.append({
-                        "algorithm": algo, "seed": seed, "period": period_key,
-                        "reward_type": cfg.env.reward_type, **m,
+                        "algorithm": algo, "seed": seed, "period": period_key, **m,
                     })
                     np.savez(
                         Path(results_dir) / f"oos_{period_key}_{algo}_seed{seed}.npz",
@@ -160,7 +156,7 @@ def _print_summary(rows: list, period_key: str):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="config.yaml")
-    ap.add_argument("--algo", choices=["SAC", "PPO", "DQN"], help="Train only this algo")
+    ap.add_argument("--algo", choices=["SAC", "DQN"], help="Train only this algo")
     ap.add_argument("--skip-train", action="store_true")
     ap.add_argument("--skip-oos", action="store_true")
     ap.add_argument("--oos", action="append",

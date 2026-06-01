@@ -1,6 +1,10 @@
-"""Load config.yaml into typed dataclasses with validation."""
-from dataclasses import dataclass, field
-from pathlib import Path
+"""Load config.yaml into typed dataclasses with validation.
+
+Loading is tolerant of unknown/legacy keys (filtered out via `_only_known`), so
+older config files with retired fields (reward_type, allow_short, agent_ppo, ...)
+still load against the current, slimmer dataclasses.
+"""
+from dataclasses import dataclass, fields
 from typing import Dict, List, Union
 
 import yaml
@@ -61,12 +65,8 @@ class FeaturesConfig:
 class EnvConfig:
     window: int
     tx_cost: float
-    reward_type: str
-    allow_short: bool
-    volatility_penalty: float
-    dsr_eta: float
     sentiment_lambda: float
-    action_space_type: str = "continuous"
+    action_space_type: str = "discrete"
 
 
 @dataclass
@@ -90,25 +90,6 @@ class SACConfig:
     ent_coef: Union[float, str]
     train_freq: int
     gradient_steps: int
-    use_sde: bool
-    net_arch: List[int]
-    activation_fn: str
-
-
-@dataclass
-class PPOConfig:
-    device: str
-    total_timesteps: int
-    learning_rate: float
-    lr_schedule: str
-    n_steps: int
-    batch_size: int
-    n_epochs: int
-    gamma: float
-    gae_lambda: float
-    clip_range: float
-    ent_coef: Union[float, str]
-    max_grad_norm: float
     use_sde: bool
     net_arch: List[int]
     activation_fn: str
@@ -145,11 +126,16 @@ class Config:
     env: EnvConfig
     experiment: ExperimentConfig
     agent_sac: SACConfig
-    agent_ppo: PPOConfig
     agent_dqn: "DQNConfig | None" = None
 
     def oos_features_path(self, period_key: str) -> str:
         return f"{self.data.paths.oos_dir}/{period_key}_features.parquet"
+
+
+def _only_known(cls, d: dict) -> dict:
+    """Keep only keys that are fields of dataclass `cls` (drop legacy/extra keys)."""
+    names = {f.name for f in fields(cls)}
+    return {k: v for k, v in d.items() if k in names}
 
 
 def load_config(path: str) -> Config:
@@ -160,18 +146,17 @@ def load_config(path: str) -> Config:
         data=DataConfig(
             asset=raw["data"]["asset"],
             timeframe=raw["data"]["timeframe"],
-            paths=DataPaths(**raw["data"]["paths"]),
+            paths=DataPaths(**_only_known(DataPaths, raw["data"]["paths"])),
         ),
-        periods={k: Period(**v) for k, v in raw["periods"].items()},
-        news=NewsConfig(**raw["news"]),
-        embeddings=EmbeddingsConfig(**raw["embeddings"]),
-        sentiment=SentimentConfig(**raw["sentiment"]),
-        features=FeaturesConfig(**raw["features"]),
-        env=EnvConfig(**raw["env"]),
-        experiment=ExperimentConfig(**raw["experiment"]),
-        agent_sac=SACConfig(**raw["agent_sac"]),
-        agent_ppo=PPOConfig(**raw["agent_ppo"]),
-        agent_dqn=DQNConfig(**raw["agent_dqn"]) if "agent_dqn" in raw else None,
+        periods={k: Period(**_only_known(Period, v)) for k, v in raw["periods"].items()},
+        news=NewsConfig(**_only_known(NewsConfig, raw["news"])),
+        embeddings=EmbeddingsConfig(**_only_known(EmbeddingsConfig, raw["embeddings"])),
+        sentiment=SentimentConfig(**_only_known(SentimentConfig, raw["sentiment"])),
+        features=FeaturesConfig(**_only_known(FeaturesConfig, raw["features"])),
+        env=EnvConfig(**_only_known(EnvConfig, raw["env"])),
+        experiment=ExperimentConfig(**_only_known(ExperimentConfig, raw["experiment"])),
+        agent_sac=SACConfig(**_only_known(SACConfig, raw["agent_sac"])),
+        agent_dqn=DQNConfig(**_only_known(DQNConfig, raw["agent_dqn"])) if "agent_dqn" in raw else None,
     )
     _validate(cfg)
     return cfg
@@ -185,11 +170,9 @@ def _validate(cfg: Config) -> None:
     for k in cfg.experiment.oos_periods:
         if k not in cfg.periods:
             raise ValueError(f"oos_period '{k}' not found in config.periods")
-    if cfg.env.reward_type not in {"basic", "risk_adjusted", "dsr"}:
-        raise ValueError(f"env.reward_type invalid: {cfg.env.reward_type}")
     for algo in cfg.experiment.algos:
-        if algo not in {"SAC", "PPO", "DQN"}:
-            raise ValueError(f"experiment.algos: only SAC/PPO/DQN supported, got '{algo}'")
+        if algo not in {"SAC", "DQN"}:
+            raise ValueError(f"experiment.algos: only SAC/DQN supported, got '{algo}'")
         if algo == "DQN" and cfg.agent_dqn is None:
             raise ValueError("algos includes DQN but agent_dqn config missing")
         if algo == "DQN" and cfg.env.action_space_type != "discrete":

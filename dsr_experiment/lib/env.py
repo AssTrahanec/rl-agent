@@ -1,4 +1,12 @@
-"""TradingEnv: continuous or discrete allocation, rewards basic/risk_adjusted/dsr."""
+"""TradingEnv: DSR reward + sentiment bonus + transaction cost.
+
+Action space:
+    - discrete:   Discrete(3) — 0=Hold, 1=Buy all-in, 2=Sell all-out (DQN).
+    - continuous: Box([0,1]) — allocation fraction (SAC).
+
+Reward = DSR(R_t) + sentiment_lambda * sentiment_t * log_return_t,
+where R_t = log_return * allocation − tx_cost * |Δallocation|.
+"""
 import logging
 
 import gymnasium as gym
@@ -6,13 +14,11 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
+_DSR_ETA = 0.01  # forgetting factor for the differential Sharpe ratio
+
 
 class TradingEnv(gym.Env):
-    """Single-asset trading env.
-
-    action_space_type="continuous": Box action ∈ [0,1] (or [-1,1] if allow_short).
-    action_space_type="discrete":   Discrete(3) action ∈ {0=Hold, 1=Buy all-in, 2=Sell all-out}.
-    """
+    """Single-asset long-only trading environment (Moody & Saffell DSR reward)."""
 
     metadata = {"render_modes": []}
 
@@ -22,30 +28,21 @@ class TradingEnv(gym.Env):
         prices: np.ndarray,
         window: int = 30,
         tx_cost: float = 0.001,
-        reward_type: str = "basic",
-        allow_short: bool = False,
-        volatility_penalty: float = 0.5,
         sentiment_signal: "np.ndarray | None" = None,
         sentiment_lambda: float = 0.1,
-        dsr_eta: float = 0.01,
-        action_space_type: str = "continuous",
+        action_space_type: str = "discrete",
     ):
         super().__init__()
         assert len(features) == len(prices), "features and prices must have same length"
         assert len(features) > window, "Need more rows than window"
-        assert reward_type in ("basic", "risk_adjusted", "dsr"), reward_type
         assert action_space_type in ("continuous", "discrete"), action_space_type
 
         self.features = features.astype(np.float32)
         self.prices = prices.astype(np.float64)
         self.window = window
         self.tx_cost = tx_cost
-        self.reward_type = reward_type
-        self.allow_short = allow_short
-        self.volatility_penalty = volatility_penalty
         self.sentiment_signal = sentiment_signal
         self.sentiment_lambda = sentiment_lambda
-        self._dsr_eta = dsr_eta
         self.action_space_type = action_space_type
 
         n_features = features.shape[1]
@@ -56,9 +53,8 @@ class TradingEnv(gym.Env):
         if action_space_type == "discrete":
             self.action_space = gym.spaces.Discrete(3)   # 0=Hold, 1=Buy, 2=Sell
         else:
-            action_low = -1.0 if allow_short else 0.0
             self.action_space = gym.spaces.Box(
-                low=action_low, high=1.0, shape=(1,), dtype=np.float32,
+                low=0.0, high=1.0, shape=(1,), dtype=np.float32,
             )
 
         self.current_step = 0
@@ -79,33 +75,23 @@ class TradingEnv(gym.Env):
             arr = np.asarray(action)
             a = int(arr.item()) if arr.ndim == 0 else int(arr.flatten()[0])
             if a == 1:
-                allocation = 1.0   # Buy all-in
+                allocation = 1.0
             elif a == 2:
-                allocation = 0.0   # Sell all-out
+                allocation = 0.0
             else:
-                allocation = self.prev_allocation   # Hold
+                allocation = self.prev_allocation
         else:
-            action_low = self.action_space.low[0]
-            allocation = float(np.clip(action[0], action_low, 1.0))
+            allocation = float(np.clip(action[0], 0.0, 1.0))
 
         price_curr = self.prices[self.current_step - 1]
         price_next = self.prices[self.current_step]
         log_return = float(np.log(price_next / price_curr))
 
         delta = abs(allocation - self.prev_allocation)
-        tx_penalty = self.tx_cost * delta
-        R_t = log_return * allocation - tx_penalty
-        if allocation < 0:
-            R_t -= 0.0001 * abs(allocation)   # short funding ≈ 0.03%/day on BTC perp
+        R_t = log_return * allocation - self.tx_cost * delta
 
-        if self.reward_type == "dsr":
-            reward = self._compute_dsr(R_t)
-        elif self.reward_type == "risk_adjusted":
-            reward = float(R_t - self.volatility_penalty * delta)
-        else:
-            reward = float(R_t)
-
-        if self.sentiment_signal is not None and self.reward_type == "dsr":
+        reward = self._compute_dsr(R_t)
+        if self.sentiment_signal is not None:
             sent = float(self.sentiment_signal[self.current_step])
             reward += self.sentiment_lambda * sent * log_return
 
@@ -116,18 +102,16 @@ class TradingEnv(gym.Env):
         return self._get_obs(), reward, terminated, False, info
 
     def _compute_dsr(self, R_t: float) -> float:
-        eta = self._dsr_eta
+        """Differential Sharpe Ratio (Moody & Saffell, 2001) via EMA of moments A, B."""
         dA = R_t - self._dsr_A
         dB = R_t ** 2 - self._dsr_B
         denom = self._dsr_B - self._dsr_A ** 2
         if denom < 1e-12:
             reward = float(R_t)
         else:
-            reward = float(
-                (self._dsr_B * dA - 0.5 * self._dsr_A * dB) / (denom ** 1.5)
-            )
-        self._dsr_A += eta * dA
-        self._dsr_B += eta * dB
+            reward = float((self._dsr_B * dA - 0.5 * self._dsr_A * dB) / (denom ** 1.5))
+        self._dsr_A += _DSR_ETA * dA
+        self._dsr_B += _DSR_ETA * dB
         return reward
 
     def _get_obs(self) -> np.ndarray:
