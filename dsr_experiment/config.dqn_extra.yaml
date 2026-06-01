@@ -1,0 +1,120 @@
+# === DQN EXTRA SEEDS — train 7 new seeds with improved hyperparameters ===
+# Matches experiments/run_2026-04-20_discrete_trader/config.yaml, except:
+#   seeds = 7 NEW seeds (42,123,7 already trained in snapshot)
+#   algos = ["DQN"] only
+#   IMPROVEMENTS:
+#     learning_starts: 10000 -> 20000 (longer buffer warmup = stabler Q)
+#     target_update_interval: 1000 -> 5000 (stabler target network)
+
+# === DATA ===
+data:
+  asset: "BTC/USDT"
+  timeframe: "4h"
+  paths:
+    raw_ohlcv:      "data/raw/ohlcv.parquet"
+    raw_news:       "data/raw/news.parquet"
+    train_features: "data/train/features.parquet"
+    compressor:     "data/train/compressor.pkl"
+    oos_dir:        "data/oos"
+
+# === PERIODS ===
+periods:
+  train:    { start: "2020-01-01", end: "2023-12-31" }
+  oos_2024: { start: "2024-01-01", end: "2024-12-31" }
+  oos_2025: { start: "2025-01-01", end: "2025-06-01" }
+
+# === NEWS ===
+news:
+  hf_dataset: "edaschau/bitcoin_news"
+  text_col:   "article_text"
+  date_col:   "date_time"
+  dedup_threshold: 0.85
+
+# === EMBEDDINGS ===
+embeddings:
+  model_name: "FinLang/finance-embeddings-investopedia"
+  raw_dim: 768
+  compressed_dim: 64
+  top_pca_lags: 3
+  temporal_decay_alpha: 0.1
+
+# === SENTIMENT ===
+sentiment:
+  model_name: "ProsusAI/finbert"
+
+# === FEATURES ===
+features:
+  normalize_window: 30
+  news_count_lags: [1, 2]
+  news_count_roll: 7
+
+# === ENV === (discrete, matches discrete_trader snapshot)
+env:
+  window: 30
+  tx_cost: 0.001
+  reward_type: "dsr"
+  allow_short: false
+  volatility_penalty: 0.5
+  dsr_eta: 0.01
+  sentiment_lambda: 0.3
+  action_space_type: "discrete"
+
+# === EXPERIMENT === (7 NEW seeds, DQN only)
+experiment:
+  seeds: [2024, 99, 1337, 555, 888, 2001, 31415]
+  algos: ["DQN"]
+  oos_periods: ["oos_2024", "oos_2025"]
+
+# === AGENTS === (PPO/SAC unused here but config_loader requires them)
+agent_sac:
+  device: "cuda"
+  total_timesteps: 200000
+  learning_rate: 7.3e-4
+  lr_schedule: "constant"
+  buffer_size: 300000
+  batch_size: 256
+  learning_starts: 10000
+  tau: 0.02
+  gamma: 0.99
+  ent_coef: "auto"
+  train_freq: 8
+  gradient_steps: 8
+  use_sde: true
+  net_arch: [128, 128]
+  activation_fn: "relu"
+
+agent_ppo:
+  device: "cpu"
+  total_timesteps: 500000
+  learning_rate: 3.0e-4
+  lr_schedule: "linear"
+  n_steps: 2048
+  batch_size: 64
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  max_grad_norm: 0.5
+  use_sde: false
+  net_arch: [128, 128]
+  activation_fn: "tanh"
+
+# === DQN === (IMPROVED: learning_starts 10k->20k, target_update 1k->5k)
+agent_dqn:
+  device: "cuda"
+  total_timesteps: 200000
+  learning_rate: 1.0e-4
+  lr_schedule: "constant"
+  buffer_size: 300000
+  batch_size: 128
+  learning_starts: 20000      # IMPROVEMENT: 10000 -> 20000 (longer warmup)
+  tau: 1.0
+  gamma: 0.99
+  train_freq: 4
+  gradient_steps: 1
+  target_update_interval: 5000   # IMPROVEMENT: 1000 -> 5000 (stabler target)
+  exploration_fraction: 0.2
+  exploration_final_eps: 0.05
+  net_arch: [128, 128]
+  activation_fn: "relu"

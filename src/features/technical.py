@@ -4,7 +4,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 def add_technical_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """Compute technical indicators from OHLCV DataFrame.
 

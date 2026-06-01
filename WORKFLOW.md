@@ -15,8 +15,8 @@
 | 2 | PRD | `prompts/02_prd.md` | ✅ |
 | 3 | Plan + Setup | `prompts/03_plan.md` | ✅ |
 | 4 | Реализация | `prompts/04_implementation.md` | ⬜ |
-| 5 | Эксперименты | `prompts/05_experiments.md` | ⬜ |
-| 6 | Написание | `prompts/06_thesis_writing.md` | ⬜ |
+| 5 | Эксперименты | `prompts/05_experiments.md` | ✅ |
+| 6 | Написание | `prompts/06_thesis_writing.md` | ✅ |
 
 ---
 

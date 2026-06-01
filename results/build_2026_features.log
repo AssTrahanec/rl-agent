@@ -1,0 +1,10 @@
+2026-04-12 13:24:03,637 INFO Fetching BTC/USDT 4h prices 2026-01-01 to 2026-04-12
+2026-04-12 13:24:07,866 INFO Prices shape: (607, 5)
+2026-04-12 13:24:07,866 INFO Adding technical indicators
+2026-04-12 13:24:07,880 INFO Normalizing
+c:\Users\ilya\Desktop\rl\rl-agent\scripts\build_2026_features.py:55: PerformanceWarning: DataFrame is highly fragmented.  This is usually the result of calling `frame.insert` many times, which has poor performance.  Consider joining all columns at once using pd.concat(axis=1) instead. To get a de-fragmented frame, use `newframe = frame.copy()`
+  prices_df[col] = 0.0
+2026-04-12 13:24:07,894 INFO Feature columns: 95
+2026-04-12 13:24:07,922 INFO Saved to data/processed/btc_4h_2026_embedding_features.parquet
+2026-04-12 13:24:07,922 INFO Date range: 2026-01-01 00:00:00+00:00 to 2026-04-12 00:00:00+00:00
+2026-04-12 13:24:07,922 INFO Shape: (607, 101)

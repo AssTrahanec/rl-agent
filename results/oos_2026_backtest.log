@@ -1,0 +1,31 @@
+2026-04-12 13:24:21,160 INFO Loaded from data/processed/btc_4h_2026_embedding_features.parquet: shape=(607, 95), prices=607
+2026-04-12 13:24:21,160 INFO Loaded test features shape=(607, 95), prices=607
+2026-04-12 13:24:21,160 INFO Backtesting PPO seed=42
+2026-04-12 13:24:24,234 INFO Backtesting PPO seed=123
+2026-04-12 13:24:24,496 INFO Backtesting PPO seed=7
+2026-04-12 13:24:24,739 INFO Backtesting PPO seed=2024
+2026-04-12 13:24:24,991 INFO Backtesting PPO seed=99
+2026-04-12 13:24:25,256 INFO Backtesting A2C seed=42
+2026-04-12 13:24:25,516 INFO Backtesting A2C seed=123
+2026-04-12 13:24:25,773 INFO Backtesting A2C seed=7
+2026-04-12 13:24:26,029 INFO Backtesting A2C seed=2024
+2026-04-12 13:24:26,274 INFO Backtesting A2C seed=99
+2026-04-12 13:24:26,523 INFO Backtesting SAC seed=42
+C:\Users\ilya\Desktop\rl\rl-agent\venv\Lib\site-packages\stable_baselines3\common\buffers.py:242: UserWarning: This system does not have apparently enough memory to store the complete replay buffer 6.85GB > 3.82GB
+  warnings.warn(
+2026-04-12 13:24:26,832 INFO Backtesting SAC seed=123
+C:\Users\ilya\Desktop\rl\rl-agent\venv\Lib\site-packages\stable_baselines3\common\buffers.py:242: UserWarning: This system does not have apparently enough memory to store the complete replay buffer 6.85GB > 3.88GB
+  warnings.warn(
+2026-04-12 13:24:27,115 INFO Backtesting SAC seed=7
+C:\Users\ilya\Desktop\rl\rl-agent\venv\Lib\site-packages\stable_baselines3\common\buffers.py:242: UserWarning: This system does not have apparently enough memory to store the complete replay buffer 6.85GB > 3.95GB
+  warnings.warn(
+2026-04-12 13:24:27,408 INFO Backtesting SAC seed=2024
+C:\Users\ilya\Desktop\rl\rl-agent\venv\Lib\site-packages\stable_baselines3\common\buffers.py:242: UserWarning: This system does not have apparently enough memory to store the complete replay buffer 6.85GB > 3.94GB
+  warnings.warn(
+2026-04-12 13:24:27,710 INFO Backtesting SAC seed=99
+C:\Users\ilya\Desktop\rl\rl-agent\venv\Lib\site-packages\stable_baselines3\common\buffers.py:242: UserWarning: This system does not have apparently enough memory to store the complete replay buffer 6.85GB > 4.02GB
+  warnings.warn(
+2026-04-12 13:24:28,023 INFO Bootstrap CI (95%) computed over 5 seeds
+2026-04-12 13:24:28,053 INFO Bootstrap CI (95%) computed over 5 seeds
+2026-04-12 13:24:28,082 INFO Bootstrap CI (95%) computed over 5 seeds
+2026-04-12 13:24:28,095 INFO Wrote 15 OOS rows to results\oos_2026_embeddings.csv

@@ -1,0 +1,78 @@
+2026-04-12 13:24:14,873 INFO Fetching BTC/USDT 4h prices 2025-01-01 to 2025-04-10
+2026-04-12 13:24:20,275 INFO Prices shape: (595, 5)
+2026-04-12 13:24:20,275 INFO Adding technical indicators
+2026-04-12 13:24:20,283 INFO Normalizing features
+2026-04-12 13:24:20,288 INFO Loading news for 2025
+2026-04-12 13:24:20,886 INFO Loading dataset from HuggingFace: edaschau/bitcoin_news
+2026-04-12 13:24:21,434 INFO HTTP Request: HEAD https://huggingface.co/datasets/edaschau/bitcoin_news/resolve/main/README.md "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:21,523 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/datasets/edaschau/bitcoin_news/b436ba3f8af941a3bc125b8cb1d7c5297fd01e13/README.md "HTTP/1.1 200 OK"
+2026-04-12 13:24:21,705 INFO HTTP Request: HEAD https://huggingface.co/datasets/edaschau/bitcoin_news/resolve/b436ba3f8af941a3bc125b8cb1d7c5297fd01e13/bitcoin_news.py "HTTP/1.1 404 Not Found"
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-04-12 13:24:21,705 WARNING Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-04-12 13:24:22,449 INFO HTTP Request: HEAD https://s3.amazonaws.com/datasets.huggingface.co/datasets/datasets/edaschau/bitcoin_news/edaschau/bitcoin_news.py "HTTP/1.1 404 Not Found"
+2026-04-12 13:24:22,663 INFO HTTP Request: GET https://huggingface.co/api/datasets/edaschau/bitcoin_news/revision/b436ba3f8af941a3bc125b8cb1d7c5297fd01e13 "HTTP/1.1 200 OK"
+2026-04-12 13:24:22,843 INFO HTTP Request: HEAD https://huggingface.co/datasets/edaschau/bitcoin_news/resolve/b436ba3f8af941a3bc125b8cb1d7c5297fd01e13/.huggingface.yaml "HTTP/1.1 404 Not Found"
+2026-04-12 13:24:23,616 INFO HTTP Request: GET https://datasets-server.huggingface.co/info?dataset=edaschau/bitcoin_news "HTTP/1.1 200 OK"
+2026-04-12 13:24:23,805 INFO HTTP Request: GET https://huggingface.co/api/datasets/edaschau/bitcoin_news/tree/b436ba3f8af941a3bc125b8cb1d7c5297fd01e13/data?recursive=true&expand=false "HTTP/1.1 404 Not Found"
+2026-04-12 13:24:23,989 INFO HTTP Request: GET https://huggingface.co/api/datasets/edaschau/bitcoin_news/tree/b436ba3f8af941a3bc125b8cb1d7c5297fd01e13?recursive=false&expand=false "HTTP/1.1 200 OK"
+2026-04-12 13:24:24,251 INFO HTTP Request: HEAD https://huggingface.co/datasets/edaschau/bitcoin_news/resolve/b436ba3f8af941a3bc125b8cb1d7c5297fd01e13/dataset_infos.json "HTTP/1.1 404 Not Found"
+2026-04-12 13:24:28,791 INFO Filtered to 5168 news articles for 2025-01-01 to 2025-04-10
+2026-04-12 13:24:28,791 INFO Loaded 5168 news articles
+2026-04-12 13:24:28,791 INFO Preprocessing news into 4h windows
+2026-04-12 13:24:28,922 INFO Preprocessed 3236 articles into 515 4h windows
+2026-04-12 13:24:28,923 INFO 4h news windows: 515
+2026-04-12 13:24:28,923 INFO Loading compressor from data/processed/btc_4h_compressor.pkl
+2026-04-12 13:24:35,630 INFO Loading ProsusAI/finbert sentiment pipeline...
+2026-04-12 13:24:35,923 INFO HTTP Request: HEAD https://huggingface.co/ProsusAI/finbert/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:36,012 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/ProsusAI/finbert/4556d13015211d73dccd3fdd39d39232506f3e43/config.json "HTTP/1.1 200 OK"
+2026-04-12 13:24:36,214 INFO HTTP Request: HEAD https://huggingface.co/ProsusAI/finbert/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-04-12 13:24:36,423 INFO HTTP Request: GET https://huggingface.co/api/models/ProsusAI/finbert "HTTP/1.1 200 OK"
+2026-04-12 13:24:36,811 INFO HTTP Request: GET https://huggingface.co/api/models/ProsusAI/finbert/commits/main "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/201 [00:00<?, ?it/s]Loading weights: 100%|##########| 201/201 [00:00<00:00, 42929.78it/s]
+[1mBertForSequenceClassification LOAD REPORT[0m from: ProsusAI/finbert
+Key                          | Status     |  | 
+-----------------------------+------------+--+-
+bert.embeddings.position_ids | UNEXPECTED |  | 
+
+[3mNotes:
+- UNEXPECTED[3m	:can be ignored when loading from different task/architecture; not ok if you expect identical arch.[0m
+2026-04-12 13:24:37,426 INFO HTTP Request: GET https://huggingface.co/api/models/ProsusAI/finbert/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-04-12 13:24:37,503 INFO HTTP Request: GET https://huggingface.co/api/models/ProsusAI/finbert/discussions?p=0 "HTTP/1.1 200 OK"
+2026-04-12 13:24:37,637 INFO HTTP Request: GET https://huggingface.co/api/models/ProsusAI/finbert/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-04-12 13:24:37,719 INFO HTTP Request: GET https://huggingface.co/api/models/ProsusAI/finbert/commits/refs%2Fpr%2F29 "HTTP/1.1 200 OK"
+2026-04-12 13:24:37,930 INFO HTTP Request: HEAD https://huggingface.co/ProsusAI/finbert/resolve/refs%2Fpr%2F29/model.safetensors.index.json "HTTP/1.1 404 Not Found"
+2026-04-12 13:24:38,120 INFO HTTP Request: HEAD https://huggingface.co/ProsusAI/finbert/resolve/refs%2Fpr%2F29/model.safetensors "HTTP/1.1 302 Found"
+2026-04-12 13:24:38,303 INFO Loading FinLang/finance-embeddings-investopedia...
+2026-04-12 13:24:38,305 INFO Load pretrained SentenceTransformer: FinLang/finance-embeddings-investopedia
+2026-04-12 13:24:38,492 INFO HTTP Request: HEAD https://huggingface.co/FinLang/finance-embeddings-investopedia/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:38,788 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/FinLang/finance-embeddings-investopedia/37d7594d02e3d656a241e099e39ac50ab921f999/modules.json "HTTP/1.1 200 OK"
+2026-04-12 13:24:39,012 INFO HTTP Request: HEAD https://huggingface.co/FinLang/finance-embeddings-investopedia/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:39,101 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/FinLang/finance-embeddings-investopedia/37d7594d02e3d656a241e099e39ac50ab921f999/config_sentence_transformers.json "HTTP/1.1 200 OK"
+2026-04-12 13:24:39,288 INFO HTTP Request: HEAD https://huggingface.co/FinLang/finance-embeddings-investopedia/resolve/main/config_sentence_transformers.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:39,379 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/FinLang/finance-embeddings-investopedia/37d7594d02e3d656a241e099e39ac50ab921f999/config_sentence_transformers.json "HTTP/1.1 200 OK"
+2026-04-12 13:24:39,570 INFO HTTP Request: HEAD https://huggingface.co/FinLang/finance-embeddings-investopedia/resolve/main/README.md "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:39,659 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/FinLang/finance-embeddings-investopedia/37d7594d02e3d656a241e099e39ac50ab921f999/README.md "HTTP/1.1 200 OK"
+2026-04-12 13:24:39,840 INFO HTTP Request: HEAD https://huggingface.co/FinLang/finance-embeddings-investopedia/resolve/main/modules.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:39,930 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/FinLang/finance-embeddings-investopedia/37d7594d02e3d656a241e099e39ac50ab921f999/modules.json "HTTP/1.1 200 OK"
+2026-04-12 13:24:40,114 INFO HTTP Request: HEAD https://huggingface.co/FinLang/finance-embeddings-investopedia/resolve/main/sentence_bert_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:40,202 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/FinLang/finance-embeddings-investopedia/37d7594d02e3d656a241e099e39ac50ab921f999/sentence_bert_config.json "HTTP/1.1 200 OK"
+2026-04-12 13:24:40,401 INFO HTTP Request: HEAD https://huggingface.co/FinLang/finance-embeddings-investopedia/resolve/main/adapter_config.json "HTTP/1.1 404 Not Found"
+2026-04-12 13:24:40,584 INFO HTTP Request: HEAD https://huggingface.co/FinLang/finance-embeddings-investopedia/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:40,673 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/FinLang/finance-embeddings-investopedia/37d7594d02e3d656a241e099e39ac50ab921f999/config.json "HTTP/1.1 200 OK"
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]Loading weights: 100%|##########| 199/199 [00:00<00:00, 5035.60it/s]
+2026-04-12 13:24:40,991 INFO HTTP Request: HEAD https://huggingface.co/FinLang/finance-embeddings-investopedia/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:41,080 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/FinLang/finance-embeddings-investopedia/37d7594d02e3d656a241e099e39ac50ab921f999/config.json "HTTP/1.1 200 OK"
+2026-04-12 13:24:41,263 INFO HTTP Request: HEAD https://huggingface.co/FinLang/finance-embeddings-investopedia/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:41,352 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/FinLang/finance-embeddings-investopedia/37d7594d02e3d656a241e099e39ac50ab921f999/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-04-12 13:24:41,546 INFO HTTP Request: GET https://huggingface.co/api/models/FinLang/finance-embeddings-investopedia/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-04-12 13:24:41,750 INFO HTTP Request: GET https://huggingface.co/api/models/FinLang/finance-embeddings-investopedia/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-04-12 13:24:41,984 INFO HTTP Request: HEAD https://huggingface.co/FinLang/finance-embeddings-investopedia/resolve/main/1_Pooling/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-12 13:24:42,073 INFO HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/FinLang/finance-embeddings-investopedia/37d7594d02e3d656a241e099e39ac50ab921f999/1_Pooling%2Fconfig.json "HTTP/1.1 200 OK"
+2026-04-12 13:24:42,260 INFO HTTP Request: GET https://huggingface.co/api/models/FinLang/finance-embeddings-investopedia "HTTP/1.1 200 OK"
+You seem to be using the pipelines sequentially on GPU. In order to maximize efficiency please use a dataset
+2026-04-12 13:26:08,732 INFO Matched 515/515 news windows to OHLCV index
+2026-04-12 13:26:08,736 INFO Feature columns: 95
+2026-04-12 13:26:08,752 INFO Saved to data/processed/btc_4h_2025_embedding_features.parquet
+2026-04-12 13:26:08,752 INFO Date range: 2025-01-01 00:00:00+00:00 to 2025-04-10 00:00:00+00:00
+2026-04-12 13:26:08,752 INFO Shape: (595, 101)
+2026-04-12 13:26:08,752 INFO News windows with data: 515

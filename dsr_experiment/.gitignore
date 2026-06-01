@@ -1,0 +1,13 @@
+data/
+results/
+models/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Dashboard runtime cache
+dashboard/cache/
+
+# Environment variables (API keys)
+.env
+.env.local

@@ -1,0 +1,22 @@
+2026-04-12 12:04:02,851 INFO Loading data\processed\btc_4h_embedding_features.parquet
+2026-04-12 12:04:02,897 INFO Loaded 2191 rows | 95 features | 2024-01-01 – 2024-12-31 | asset=BTC/USDT
+2026-04-12 12:04:02,897 INFO Loaded test features shape=(2191, 95), prices=2191
+2026-04-12 12:04:02,897 INFO Backtesting PPO seed=42
+2026-04-12 12:04:06,640 INFO Backtesting PPO seed=123
+2026-04-12 12:04:07,476 INFO Backtesting PPO seed=7
+2026-04-12 12:04:08,285 INFO Backtesting PPO seed=2024
+2026-04-12 12:04:09,089 INFO Backtesting PPO seed=99
+2026-04-12 12:04:09,932 INFO Backtesting A2C seed=42
+2026-04-12 12:04:10,771 INFO Backtesting A2C seed=123
+2026-04-12 12:04:11,621 INFO Backtesting A2C seed=7
+2026-04-12 12:04:12,448 INFO Backtesting A2C seed=2024
+2026-04-12 12:04:13,270 INFO Backtesting A2C seed=99
+2026-04-12 12:04:14,080 INFO Backtesting SAC seed=42
+2026-04-12 12:04:14,925 INFO Backtesting SAC seed=123
+2026-04-12 12:04:15,789 INFO Backtesting SAC seed=7
+2026-04-12 12:04:16,635 INFO Backtesting SAC seed=2024
+2026-04-12 12:04:17,470 INFO Backtesting SAC seed=99
+2026-04-12 12:04:18,326 INFO Bootstrap CI (95%) computed over 5 seeds
+2026-04-12 12:04:18,357 INFO Bootstrap CI (95%) computed over 5 seeds
+2026-04-12 12:04:18,387 INFO Bootstrap CI (95%) computed over 5 seeds
+2026-04-12 12:04:18,389 INFO Wrote 15 OOS rows to results\oos_2024_embeddings.csv
