@@ -10,46 +10,35 @@ from sklearn.decomposition import PCA
 logger = logging.getLogger(__name__)
 
 EMBEDDING_DIM = 768
+_MODEL_NAME = "FinLang/finance-embeddings-investopedia"
 
 _model = None
-_model_name_loaded: Optional[str] = None
 
 
-def _get_model(model_name: str = "FinLang/finance-embeddings-investopedia"):
-    global _model, _model_name_loaded
-    if _model is None or _model_name_loaded != model_name:
+def _get_model():
+    """Lazy singleton for the FinLang sentence-transformer (loaded once)."""
+    global _model
+    if _model is None:
         import torch
         from sentence_transformers import SentenceTransformer
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Loading SentenceTransformer({model_name}) on {device}")
-        _model = SentenceTransformer(model_name, device=device)
-        _model_name_loaded = model_name
+        logger.info(f"Loading SentenceTransformer({_MODEL_NAME}) on {device}")
+        _model = SentenceTransformer(_MODEL_NAME, device=device)
     return _model
 
 
-def compute_embeddings(
-    texts: List[str],
-    model: Optional[object] = None,
-    weights: Optional[List[float]] = None,
-    model_name: str = "FinLang/finance-embeddings-investopedia",
-) -> np.ndarray:
-    """Weighted mean-pooled embedding (shape: (EMBEDDING_DIM,))."""
+def compute_embeddings(texts: List[str], weights: Optional[List[float]] = None) -> np.ndarray:
+    """Mean-pooled FinLang embedding, optionally sentiment-weighted (shape: (EMBEDDING_DIM,))."""
     if not texts:
         return np.zeros(EMBEDDING_DIM, dtype=np.float32)
-    st_model = model if model is not None else _get_model(model_name)
-    embeddings = st_model.encode(texts, show_progress_bar=False)
-
+    embeddings = _get_model().encode(texts, show_progress_bar=False)
     if weights is None or len(weights) != len(texts):
-        mean_emb = np.mean(embeddings, axis=0)
-    else:
-        w = np.array(weights, dtype=np.float32)
-        w_sum = w.sum()
-        if w_sum < 1e-8:
-            mean_emb = np.mean(embeddings, axis=0)
-        else:
-            w = w / w_sum
-            mean_emb = np.average(embeddings, axis=0, weights=w)
-    return mean_emb.astype(np.float32)
+        return np.mean(embeddings, axis=0).astype(np.float32)
+    w = np.array(weights, dtype=np.float32)
+    w_sum = w.sum()
+    if w_sum < 1e-8:
+        return np.mean(embeddings, axis=0).astype(np.float32)
+    return np.average(embeddings, axis=0, weights=w / w_sum).astype(np.float32)
 
 
 class EmbeddingCompressor:

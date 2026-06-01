@@ -16,9 +16,9 @@ from lib.config_loader import load_config, Config
 from lib.features.price import (
     fetch_ohlcv, add_technical_indicators_minimal, rolling_zscore_normalize,
 )
-from lib.features.news import load_news_from_hf, preprocess_news_4h, deduplicate_embeddings
+from lib.features.news import load_news_from_hf, preprocess_news_4h
 from lib.features.sentiment import compute_sentiment_scores
-from lib.features.embeddings import compute_embeddings, EmbeddingCompressor, _get_model
+from lib.features.embeddings import EmbeddingCompressor, _get_model
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -54,10 +54,7 @@ def ensure_raw_news(cfg: Config) -> pd.DataFrame:
         return df
     start, end = _full_date_span(cfg)
     logger.info(f"Downloading news {start}..{end}")
-    df = load_news_from_hf(
-        cfg.news.hf_dataset, start, end,
-        text_col=cfg.news.text_col, date_col=cfg.news.date_col,
-    )
+    df = load_news_from_hf(cfg.news.hf_dataset, start, end)
     path.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(path)
     logger.info(f"Saved {len(df)} articles to {path}")
@@ -106,7 +103,7 @@ def _attach_nlp_features_minimal(
     result["sentiment_mean"] = 0.0
 
     news_4h = preprocess_news_4h(news_slice)
-    st_model = _get_model(cfg.embeddings.model_name)
+    st_model = _get_model()
 
     for _, row in news_4h.iterrows():
         ws = row["date"]
@@ -147,16 +144,10 @@ def build_train(cfg: Config):
     # Fit compressor on ALL train embeddings
     logger.info("Computing raw train embeddings for PCA fit...")
     news_4h = preprocess_news_4h(news_train)
-    st_model = _get_model(cfg.embeddings.model_name)
-    all_emb = []
-    for idx, row in news_4h.iterrows():
-        for text in row["texts"]:
-            emb = st_model.encode([text], show_progress_bar=False)[0]
-            all_emb.append(emb)
-        if (idx + 1) % 500 == 0:
-            logger.info(f"  PCA embeddings: {idx + 1}/{len(news_4h)} windows")
-    all_emb = np.array(all_emb, dtype=np.float32)
-    logger.info(f"  Total: {all_emb.shape}")
+    st_model = _get_model()
+    all_texts = [t for _, row in news_4h.iterrows() for t in row["texts"]]
+    all_emb = st_model.encode(all_texts, batch_size=64, show_progress_bar=False).astype(np.float32)
+    logger.info(f"  PCA embeddings: {all_emb.shape} from {len(news_4h)} windows")
 
     compressor = EmbeddingCompressor(
         input_dim=cfg.embeddings.raw_dim,

@@ -9,30 +9,21 @@ from sklearn.metrics.pairwise import cosine_similarity
 logger = logging.getLogger(__name__)
 
 
-def load_news_from_hf(
-    dataset_name: str,
-    start: str,
-    end: str,
-    text_col: str = "article_text",
-    date_col: str = "date_time",
-    split: str = "train",
-) -> pd.DataFrame:
-    """Load news from HuggingFace dataset, filter by date range.
+_TEXT_COL = "article_text"
+_DATE_COL = "date_time"
+_SPLIT = "train"
+
+
+def load_news_from_hf(dataset_name: str, start: str, end: str) -> pd.DataFrame:
+    """Load news from the HuggingFace dataset, filter by date range.
 
     Returns DataFrame with columns [text, date] (date as tz-aware UTC).
     """
     from datasets import load_dataset
     logger.info(f"Loading HF dataset '{dataset_name}'")
     ds = load_dataset(dataset_name)
-    df = ds[split].to_pandas()
-
-    rename_map = {}
-    if text_col != "text":
-        rename_map[text_col] = "text"
-    if date_col != "date":
-        rename_map[date_col] = "date"
-    if rename_map:
-        df = df.rename(columns=rename_map)
+    df = ds[_SPLIT].to_pandas()
+    df = df.rename(columns={_TEXT_COL: "text", _DATE_COL: "date"})
 
     df["date"] = pd.to_datetime(df["date"], utc=True, errors="coerce")
     df = df.dropna(subset=["date"])
