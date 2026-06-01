@@ -1,12 +1,17 @@
 import numpy as np
 
-TRADING_DAYS_PER_YEAR = 365
+# One annualization convention: 4h bars, 24/7 crypto -> 6 bars/day x 365 = 2190 per year.
 PERIODS_PER_YEAR_4H = 365 * 6  # 2190
 
 _PROFIT_FACTOR_CAP = 1000.0
 
 
 def compute_metrics(returns, allocations=None):
+    """Per-4h-bar returns -> performance metrics, annualized with sqrt/exp of 2190.
+
+    Sharpe/Sortino use the standard annualization SR_annual = sqrt(N) * SR_period,
+    with N = PERIODS_PER_YEAR_4H (the returns are per 4h bar, not per day).
+    """
     returns = np.asarray(returns, dtype=np.float64)
     n = len(returns)
 
@@ -14,20 +19,20 @@ def compute_metrics(returns, allocations=None):
 
     mean_r = np.mean(returns) if n > 0 else 0.0
     std_r = np.std(returns, ddof=1) if n > 1 else 1.0
-    sharpe = float(mean_r / std_r * np.sqrt(TRADING_DAYS_PER_YEAR)) if std_r > 0 else 0.0
+    sharpe = float(mean_r / std_r * np.sqrt(PERIODS_PER_YEAR_4H)) if std_r > 0 else 0.0
 
     downside = returns[returns < 0]
     d_std = np.std(downside, ddof=1) if len(downside) > 1 else 1.0
-    sortino = float(mean_r / d_std * np.sqrt(TRADING_DAYS_PER_YEAR)) if d_std > 0 else 0.0
+    sortino = float(mean_r / d_std * np.sqrt(PERIODS_PER_YEAR_4H)) if d_std > 0 else 0.0
 
     cumulative = np.cumprod(1 + returns) if n > 0 else np.array([1.0])
     drawdowns = 1 - cumulative / np.maximum.accumulate(cumulative)
     max_dd = float(np.max(drawdowns)) if n > 0 else 0.0
 
-    annual_return = (1 + total_return) ** (TRADING_DAYS_PER_YEAR / max(n, 1)) - 1
-    calmar = float(annual_return / max_dd) if max_dd > 0 else 0.0
-
-    annualized_return = float((1 + total_return) ** (PERIODS_PER_YEAR_4H / max(n, 1)) - 1) if n > 0 else 0.0
+    annualized_return = (
+        float((1 + total_return) ** (PERIODS_PER_YEAR_4H / max(n, 1)) - 1) if n > 0 else 0.0
+    )
+    calmar = float(annualized_return / max_dd) if max_dd > 0 else 0.0
 
     win_rate = float((returns > 0).sum() / n) if n > 0 else 0.0
 
