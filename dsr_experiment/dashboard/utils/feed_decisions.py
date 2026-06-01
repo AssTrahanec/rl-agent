@@ -9,8 +9,7 @@ import streamlit as st
 
 from dashboard.utils.paths import ensure_lib_on_path
 from dashboard.utils.features_live import (
-    EMB_DIM, NORMALIZE_WINDOW, NEWS_LAGS, NEWS_ROLL, TOP_PCA_LAGS,
-    expected_feature_columns,
+    EMB_DIM, NORMALIZE_WINDOW, expected_feature_columns,
 )
 from dashboard.utils.live_data import fetch_live_ohlcv
 from dashboard.utils.model_loader import load_sb3_model, load_compressor
@@ -27,11 +26,10 @@ def fetch_ohlcv() -> pd.DataFrame:
 
 
 def _build_features(ohlcv_window: pd.DataFrame, news_items: list[dict] | None) -> np.ndarray:
-    """Технические индикаторы + sentiment-агрегаты + сжатые embeddings."""
-    from lib.features.price import add_technical_indicators, rolling_zscore_normalize
-    from lib.features.lag import add_lag_features, add_rolling_features
+    """8 индикаторов + sentiment_mean + сжатый эмбеддинг (схема обучения, 41 фича)."""
+    from lib.features.price import add_technical_indicators_minimal, rolling_zscore_normalize
 
-    df = add_technical_indicators(ohlcv_window)
+    df = add_technical_indicators_minimal(ohlcv_window)
     df["raw_close"] = df["close"]
     norm_cols = [c for c in df.columns if c != "raw_close"]
     df[norm_cols] = rolling_zscore_normalize(df[norm_cols], window=NORMALIZE_WINDOW)
@@ -39,24 +37,16 @@ def _build_features(ohlcv_window: pd.DataFrame, news_items: list[dict] | None) -
     # News-фичи по умолчанию нули
     for i in range(EMB_DIM):
         df[f"emb_{i}"] = 0.0
-    for col in ("news_count", "sentiment_max", "sentiment_min",
-                "sentiment_mean", "sentiment_std", "sentiment_spread"):
-        df[col] = 0.0
+    df["sentiment_mean"] = 0.0
 
-    # Если в окне есть новости — впишем агрегаты в последнюю строку
+    # Если в окне есть новости — впишем в последнюю строку
     if news_items:
         scores = [r["sentiment_score"] for r in news_items]
         texts = [f"{r['title']}. {r['summary']}" for r in news_items]
         last = df.index[-1]
-        df.loc[last, "news_count"] = len(news_items)
         df.loc[last, "sentiment_mean"] = float(np.mean(scores))
-        df.loc[last, "sentiment_max"] = float(np.max(scores))
-        df.loc[last, "sentiment_min"] = float(np.min(scores))
-        if len(scores) > 1:
-            df.loc[last, "sentiment_std"] = float(np.std(scores))
-        df.loc[last, "sentiment_spread"] = float(np.max(scores) - np.min(scores))
 
-        # Embedding всех новостей, взвешенный по силе тональности
+        # Embedding всех новостей, взвешенный по силе тональности (как в обучении)
         raw = get_embedder().encode(texts, show_progress_bar=False)
         w = np.array([s + np.sign(s) * 0.1 if s != 0 else 0.1 for s in scores], dtype=np.float32)
         w = w / np.abs(w).sum() if np.abs(w).sum() else np.ones_like(w) / len(w)
@@ -64,11 +54,6 @@ def _build_features(ohlcv_window: pd.DataFrame, news_items: list[dict] | None) -
         compressed = load_compressor().transform(agg.reshape(1, -1))[0]
         for i in range(EMB_DIM):
             df.loc[last, f"emb_{i}"] = float(compressed[i])
-
-    # Лаги и rolling, как в обучении
-    df = add_lag_features(df, columns=["news_count"], lags=NEWS_LAGS)
-    df = add_rolling_features(df, columns=["news_count", "sentiment_mean"], window=NEWS_ROLL)
-    df = add_lag_features(df, columns=[f"emb_{i}" for i in range(TOP_PCA_LAGS)], lags=NEWS_LAGS)
 
     target_cols = expected_feature_columns()
     features = df.reindex(columns=target_cols).to_numpy(dtype=np.float32)

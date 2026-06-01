@@ -1,11 +1,10 @@
 """News Analyzer logic: score news articles and measure their effect on the model."""
 import numpy as np
 
-_EMB_DIM = 64
-_NEWS_STAT_COLUMNS = (
-    "sentiment_mean", "sentiment_max", "sentiment_min",
-    "sentiment_std", "sentiment_spread", "news_count",
-)
+_EMB_DIM = 32
+# Only sentiment_mean is a model feature in the minimal schema; the other
+# aggregates are still computed for display but not injected into the observation.
+_NEWS_STAT_COLUMNS = ("sentiment_mean",)
 
 
 def inject_news_features(features, feature_columns, stats, emb_64):

@@ -1,7 +1,8 @@
 """Build observation from live OHLCV (zero-filled NLP columns).
 
-Replicates build_data._build_baseline + zero-filled _attach_nlp_features
-so that live inference produces features with the same shape as training.
+Replicates build_data._build_baseline + the minimal NLP attach so that live
+inference produces features with the same 41-column schema as training
+(8 indicators + sentiment_mean + 32 PCA embeddings).
 """
 from typing import Tuple
 
@@ -14,11 +15,8 @@ from dashboard.utils.paths import TRAIN_FEATURES, ensure_lib_on_path
 ensure_lib_on_path()
 from lib.data_loader import _PRICE_COLUMNS_EXT
 
-EMB_DIM = 64
+EMB_DIM = 32
 NORMALIZE_WINDOW = 30
-NEWS_LAGS = [1, 2]
-NEWS_ROLL = 7
-TOP_PCA_LAGS = 3
 
 
 @st.cache_data
@@ -39,14 +37,13 @@ def expected_feature_columns() -> list[str]:
 def build_live_features(ohlcv: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, pd.DataFrame]:
     """Return (features_f32[T,F], prices_f64[T], debug_df).
 
-    Matches the schema of data/oos/*_features.parquet (minus news actually
-    computed — here zero-filled).
+    Matches the 41-column schema of data/train/features.parquet; news columns are
+    zero-filled here (live news is injected separately by feed_decisions/news_impact).
     """
-    from lib.features.price import add_technical_indicators, rolling_zscore_normalize
-    from lib.features.lag import add_lag_features, add_rolling_features
+    from lib.features.price import add_technical_indicators_minimal, rolling_zscore_normalize
 
-    # 1. Technical indicators
-    df = add_technical_indicators(ohlcv)
+    # 1. Technical indicators (8, same as training)
+    df = add_technical_indicators_minimal(ohlcv)
 
     # 2. Preserve raw close for downstream price access
     df["raw_close"] = df["close"].copy()
@@ -55,45 +52,19 @@ def build_live_features(ohlcv: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, pd
     cols_norm = [c for c in df.columns if c != "raw_close"]
     df[cols_norm] = rolling_zscore_normalize(df[cols_norm], window=NORMALIZE_WINDOW)
 
-    # 4. Zero-fill NLP columns
+    # 4. Zero-fill NLP columns (no news on plain historical bars)
     for i in range(EMB_DIM):
         df[f"emb_{i}"] = 0.0
-    df["news_count"] = 0
-    for col in ("sentiment_max", "sentiment_min", "sentiment_mean",
-                "sentiment_std", "sentiment_spread"):
-        df[col] = 0.0
+    df["sentiment_mean"] = 0.0
 
-    # 5. news_count lags
-    df = add_lag_features(df, columns=["news_count"], lags=NEWS_LAGS)
-
-    # 6. news_count + sentiment_mean rolling
-    df = add_rolling_features(
-        df, columns=["news_count", "sentiment_mean"], window=NEWS_ROLL,
-    )
-
-    # 7. Top-3 embedding lags
-    top_cols = [f"emb_{i}" for i in range(TOP_PCA_LAGS)]
-    df = add_lag_features(df, columns=top_cols, lags=NEWS_LAGS)
-
-    # 8. Extract prices + features
+    # 5. Extract prices + features in the exact training column order
     prices = df["raw_close"].to_numpy(dtype=np.float64)
-    feature_cols = [c for c in df.columns if c.lower() not in _PRICE_COLUMNS_EXT]
-    features = df[feature_cols].to_numpy(dtype=np.float32)
+    target_cols = expected_feature_columns()
+    missing = [c for c in target_cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"Live features missing training columns: {missing[:5]}")
+    features = df.reindex(columns=target_cols).to_numpy(dtype=np.float32)
     features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0)
-
-    # Sanity check shape vs training parquet
-    exp_count = expected_feature_count()
-    if features.shape[1] != exp_count:
-        exp_cols = set(expected_feature_columns())
-        got_cols = set(feature_cols)
-        missing = sorted(exp_cols - got_cols)
-        extra = sorted(got_cols - exp_cols)
-        raise ValueError(
-            f"Feature schema mismatch: expected {exp_count} columns, got {features.shape[1]}.\n"
-            f"  Missing: {missing[:5]}{'...' if len(missing) > 5 else ''}\n"
-            f"  Extra: {extra[:5]}{'...' if len(extra) > 5 else ''}"
-        )
-
     return features, prices, df
 
 
