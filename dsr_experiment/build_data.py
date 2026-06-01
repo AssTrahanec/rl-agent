@@ -89,30 +89,15 @@ def _attach_nlp_features_minimal(
     cfg: Config,
     compressor: EmbeddingCompressor,
 ) -> pd.DataFrame:
-    """Минимальная NLP-обработка: одна скалярная тональность + PCA-эмбеддинги.
+    """Основной NLP-pipeline: один скаляр тональности + PCA-эмбеддинги на окно.
 
-    Сохраняет ключевые элементы методики работы — FinBERT-тональность
-    и FinLang-эмбеддинги, — но удаляет избыточные признаки:
-        - 5 sentiment-агрегатов (max, min, std, spread, news_count) → 1 (mean);
-        - лаги (news_count_lag_1/2, emb_0/1/2_lag_1/2) → нет;
-        - rolling-средние (news_count_rolling_7, sentiment_mean_rolling_7) → нет.
+    На каждое 4h-окно добавляет:
+      - sentiment_mean — средняя FinBERT-тональность новостей окна ∈ [-1, +1];
+      - emb_0 .. emb_{compressed_dim-1} — PCA-сжатый (768→32) смысловой вектор:
+        взвешенное по тональности среднее FinLang-эмбеддингов новостей окна.
 
-    Соответствует подходу FinRL (Liu et al., 2021) к sentiment + рекомендациям
-    Delft TU (2025) о вреде избыточных признаков в DRL для трейдинга.
-
-    Не используется в основном pipeline; оставлена для документации
-    и сравнения с расширенной версией `_attach_nlp_features`.
-
-    На вход:
-        baseline    — таблица с ценовыми признаками;
-        news_slice  — корпус новостей для периода;
-        cfg         — конфигурация (нужна для размерности эмбеддингов);
-        compressor  — обученный PCA-компрессор.
-
-    На выход:
-        DataFrame с колонками:
-          - sentiment_mean — средняя тональность окна в [-1, +1];
-          - emb_0 ... emb_63 — PCA-сжатый смысловой вектор новостей окна.
+    Избыточные признаки (5 sentiment-агрегатов, news_count, лаги, rolling) намеренно
+    не вводятся — окно из 30 баров уже несёт временной контекст (FinRL, Liu 2021).
     """
     result = baseline.copy()
     emb_cols = [f"emb_{i}" for i in range(cfg.embeddings.compressed_dim)]

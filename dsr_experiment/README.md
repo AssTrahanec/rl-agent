@@ -3,12 +3,15 @@
 Автономная папка финального эксперимента магистерской работы:
 **Оптимизация стратегий торговли с помощью RL и обработки новостных текстов.**
 
-Обучает SAC и PPO агенты с **DSR-reward** и sentiment-бонусом на
-BTC/USDT 4h OHLCV + финансовые эмбеддинги новостей, затем гоняет OOS-бэктесты
-на произвольных временных периодах.
+Обучает **DQN** (дискретные действия; основной агент) и опционально **SAC**
+(непрерывная доля) с **DSR-reward** и sentiment-бонусом на BTC/USDT 4h OHLCV +
+финансовые эмбеддинги новостей, затем гоняет OOS-бэктесты на произвольных периодах.
 
 Все гиперпараметры и пути — в [config.yaml](config.yaml).
 Быстрый smoke-прогон — [config.smoke.yaml](config.smoke.yaml).
+
+Подробный построчный разбор пути новости и дашборда (для защиты) —
+[vkr_defense/news_path_walkthrough.md](vkr_defense/news_path_walkthrough.md).
 
 ---
 
@@ -19,75 +22,73 @@ BTC/USDT 4h OHLCV + финансовые эмбеддинги новостей, 
 | Этап | Файл | Суть |
 |------|------|------|
 | OHLCV через `ccxt` Binance (4h) | [lib/features/price.py](lib/features/price.py) → `fetch_ohlcv` | Скачивание свечей + кэш в `data/raw/ohlcv.parquet` |
-| 20+ технических индикаторов | [lib/features/price.py](lib/features/price.py) → `add_technical_indicators` | SMA, EMA, MACD, RSI, Bollinger, ATR, OBV, Stochastic, returns |
-| Rolling z-score нормализация | [lib/features/price.py](lib/features/price.py) → `rolling_zscore_normalize` | window=30, NaN→0, сохраняет `raw_close` для бэктеста |
+| **8 технических индикаторов** | [lib/features/price.py](lib/features/price.py) → `add_technical_indicators_minimal` | EMA-26, MACD, RSI-14, BB-width, ATR-14, OBV, Stoch %K, return_1d |
+| Rolling z-score нормализация (строго трейлинг) | [lib/features/price.py](lib/features/price.py) → `rolling_zscore_normalize` | window=30, NaN→0, сохраняет `raw_close` для бэктеста |
 | Загрузка новостей из HF | [lib/features/news.py](lib/features/news.py) → `load_news_from_hf` | `edaschau/bitcoin_news`, фильтр по датам, кэш в `data/raw/news.parquet` |
 | Группировка в 4h окна | [lib/features/news.py](lib/features/news.py) → `preprocess_news_4h` | `dt.floor("4h")` → список текстов на окно |
-| Дедупликация по cosine sim | [lib/features/news.py](lib/features/news.py) → `deduplicate_embeddings` | Порог 0.85 (настраивается в конфиге) |
-| FinBERT sentiment | [lib/features/sentiment.py](lib/features/sentiment.py) → `compute_sentiment_scores` | `ProsusAI/finbert`, score ∈ [-1, +1], кэш pipeline |
-| Sentence embeddings | [lib/features/embeddings.py](lib/features/embeddings.py) → `compute_embeddings` | `FinLang/finance-embeddings-investopedia` (768d), взвешенное среднее |
-| PCA-компрессор 768→64 | [lib/features/embeddings.py](lib/features/embeddings.py) → `EmbeddingCompressor` | `fit` только на train, сохраняется `compressor.pkl`, применяется к OOS |
-| Лаги и rolling по news_count / топ-PCA компонент | [lib/features/lag.py](lib/features/lag.py) → `add_lag_features`, `add_rolling_features` | лаги [1,2], rolling 7 |
-| Склейка всех фичей | [build_data.py](build_data.py) → `_attach_nlp_features` | Добавляет 64 emb-колонки + `news_count` + `sentiment_{max,min,spread}` + лаги |
+| FinBERT sentiment | [lib/features/sentiment.py](lib/features/sentiment.py) → `compute_sentiment_scores` | `ProsusAI/finbert`, score ∈ [-1, +1] |
+| Sentence embeddings | [lib/features/embeddings.py](lib/features/embeddings.py) → `_get_model` | `FinLang/finance-embeddings-investopedia` (768d) |
+| **PCA-компрессор 768→32** | [lib/features/embeddings.py](lib/features/embeddings.py) → `EmbeddingCompressor` | `fit` **только на train**, сохраняется `compressor.pkl`, применяется к OOS |
+| Склейка фичей | [build_data.py](build_data.py) → `_attach_nlp_features_minimal` | 1 `sentiment_mean` + 32 `emb_*` (взвешенное по тональности среднее) |
 
-На выходе — один parquet на период: [`data/train/features.parquet`](data/train/) и
-[`data/oos/{period_key}_features.parquet`](data/oos/).
+**Итоговый набор: 41 фича** = 8 индикаторов + `sentiment_mean` + 32 эмбеддинга.
+На выходе — один parquet на период: `data/train/features.parquet` и
+`data/oos/{period_key}_features.parquet`.
 
 ### 2. Trading environment
 
 [lib/env.py](lib/env.py) → `TradingEnv` (Gymnasium):
 
-- **Action space**: `Box([0,1])` (или `[-1,1]`, если `allow_short=true`).
-- **Observation**: сплющенное окно последних `window` 4h-баров (`window × n_features`) + текущая доля аллокации → `(window·n_features + 1,)`.
-- **Transaction cost**: `tx_cost · |Δallocation|`, вычитается из шагового P&L.
-- **Три типа награды** (выбирается в `env.reward_type`):
-  - `basic` — `log_return · allocation − tx_penalty`;
-  - `risk_adjusted` — та же базовая отдача минус штраф на волатильность оборота (`volatility_penalty · |Δallocation|`);
-  - `dsr` — **Differential Sharpe Ratio** (Moody & Saffell): рекурсивно обновляются экспоненциальные моменты `A`, `B` с темпом `dsr_eta`, награда = `(B·ΔA − 0.5·A·ΔB) / (B − A²)^(3/2)`. Реализация в [lib/env.py:96-109](lib/env.py#L96-L109).
-- **Sentiment-бонус** (только при `reward_type=dsr`): `+ sentiment_lambda · sentiment_t · log_return_t`. Сигнал — `sentiment_max` из фичей, подмешивается на каждом шаге ([lib/env.py:86-88](lib/env.py#L86-L88)).
+- **Action space**: `Discrete(3)` {0=Hold, 1=Buy all-in, 2=Sell all-out} для **DQN**;
+  `Box([0,1])` (непрерывная доля) для **SAC**.
+- **Observation**: сплющенное окно последних `window` 4h-баров (`window × n_features`)
+  + текущая доля аллокации → `(window·n_features + 1,)` = 30×41+1 = **1231**.
+- **Transaction cost**: `tx_cost · |Δallocation|`, вычитается из шаговой отдачи.
+- **Reward = DSR + sentiment-бонус**:
+  `dsr` — **Differential Sharpe Ratio** (Moody & Saffell): рекурсивно обновляются
+  экспоненциальные моменты `A`, `B`, награда = `(B·ΔA − 0.5·A·ΔB) / (B − A²)^(3/2)`
+  (`_compute_dsr`, η=0.01).
+- **Sentiment-бонус**: `+ sentiment_lambda · sentiment_t · log_return_t` (λ=0.3).
+  Сигнал — колонка `sentiment_mean`, подмешивается на каждом шаге.
 
 ### 3. Обучение
 
 [lib/train.py](lib/train.py) → `train_agent(cfg, algo, seed, features, prices, sentiment)`:
 
-- Стейбл-baselines3: `PPO` (CPU) и `SAC` (CUDA) ([lib/train.py:17](lib/train.py#L17)).
-- Для PPO — `VecNormalize` (обс+reward), для SAC — сырой env ([lib/train.py:100-102](lib/train.py#L100-L102)). `vecnormalize.pkl` сохраняется рядом с моделью и загружается на OOS.
-- Linear / constant learning-rate schedule, `use_sde=true`, `net_arch=[128,128]` по умолчанию.
+- Stable-Baselines3: `DQN` и `SAC` (CUDA). PPO убран.
+- Linear / constant learning-rate schedule, `net_arch=[128,128]` по умолчанию.
 - `ProgressCallback` печатает прогресс каждые 50k шагов.
 - Модель кладётся в `models/{algo}/{algo}_seed{seed}_{ts}/model.zip`.
 
-Гиперпараметры — секции `agent_sac` и `agent_ppo` в [config.yaml](config.yaml).
+Гиперпараметры — секции `agent_dqn` и `agent_sac` в [config.yaml](config.yaml).
 
 ### 4. Бэктест + метрики
 
-[lib/backtest.py](lib/backtest.py) → `run_backtest`:
-- Детерминированный rollout (`deterministic=True`).
-- Корректно подхватывает `VecNormalize` статистики с `training=False, norm_reward=False`.
-- Возвращает метрики + equity curve + лог аллокаций.
+[lib/backtest.py](lib/backtest.py) → `run_backtest`: детерминированный rollout
+(`deterministic=True`), возвращает метрики + equity curve + лог аллокаций.
 
-[lib/metrics.py](lib/metrics.py) → `compute_metrics`:
-Total return, Sharpe, Sortino, Max Drawdown, Calmar (аннуализация × √365, т.к. 4h/дневной подход принят как 365 периодов для консистентности).
+[lib/metrics.py](lib/metrics.py) → `compute_metrics`: Total return, Sharpe, Sortino,
+Max Drawdown, Calmar, win_rate, profit_factor, time_in_market.
+**Аннуализация — √2190** (24/7 крипта: 6 четырёхчасовых баров × 365 = 2190 в году).
 
-[lib/bootstrap.py](lib/bootstrap.py) → `bootstrap_ci`:
-Bootstrap 5000 реплик по seed-ам → 95% CI для Sharpe / total return (используется при необходимости из ноутбуков).
+[lib/bootstrap.py](lib/bootstrap.py) → `bootstrap_ci`: Bootstrap 5000 реплик по
+seed-ам → 95% CI для Sharpe / total return.
 
 ### 5. Оркестрация
 
-[run.py](run.py) — две фазы:
-1. `train_phase` — по всем `experiment.algos × experiment.seeds`.
-2. `oos_phase` — для каждого периода из `experiment.oos_periods` (или `--oos`) прогоняет последние `len(seeds)` моделей каждого алгоритма, пишет `results/oos_{period}.csv`, печатает сводку mean±std.
+[run.py](run.py) — две фазы: `train_phase` (по `algos × seeds`) и `oos_phase`
+(прогон последних `len(seeds)` моделей на каждом OOS-периоде, пишет
+`results/oos_{period}.csv`, печатает mean±std).
 
-Флаги: `--algo {SAC,PPO}`, `--skip-train`, `--skip-oos`, `--oos <key>` (повторяемый).
-`find_latest_models` ([run.py:45-56](run.py#L45-L56)) берёт самые свежие обученные модели по mtime, если запуск идёт с `--skip-train`.
+Флаги: `--algo {SAC,DQN}`, `--seeds ...`, `--skip-train`, `--skip-oos`,
+`--oos <key>`, `--no-news` (аблация без новостей).
 
-[build_data.py](build_data.py) — сборка датасетов:
-- `--build train` — фиттит PCA-компрессор и пишет train parquet.
-- `--build oos_YYYY` — использует уже сохранённый компрессор.
-- `--build all` — всё сразу.
+[lib/config_loader.py](lib/config_loader.py) — `load_config(path)` → типизированные
+dataclass'ы + валидация; терпим к устаревшим/лишним ключам в конфиге.
 
-[lib/config_loader.py](lib/config_loader.py) — `load_config(path)` → типизированные dataclass'ы + валидация (обязательный `periods.train`, допустимые `reward_type`/`algos`, `compressed_dim ≤ raw_dim`).
-
-[lib/data_loader.py](lib/data_loader.py) — `load_train` / `load_oos`: режет parquet по датам периода, отделяет `raw_close` для реальных цен, остальные колонки → feature matrix, `sentiment_max` → отдельный сигнал.
+[lib/data_loader.py](lib/data_loader.py) — `load_train` / `load_oos`: режет parquet
+по датам, отделяет `raw_close` (реальные цены), остальное → feature matrix,
+`sentiment_mean` → отдельный сигнал для награды.
 
 ---
 
@@ -97,13 +98,14 @@ Bootstrap 5000 реплик по seed-ам → 95% CI для Sharpe / total retu
 |-----------|----------|-----|
 | Asset / TF | BTC/USDT, 4h | `data` |
 | Train | 2020-01-01 .. 2023-12-31 | `periods.train` |
-| OOS | 2024 (полный), 2025-01-01..04-10 | `periods.oos_*` |
-| Seeds × algos | 5 × {SAC, PPO} = 10 моделей | `experiment` |
-| Reward | **DSR** + sentiment bonus (λ=0.1, η=0.01) | `env` |
+| OOS | 2024 (полный), 2025-01-01..06-01 | `periods.oos_*` |
+| Algos × seeds | **DQN × 5** (основной); SAC опционально | `experiment` |
+| Reward | **DSR** + sentiment bonus (λ=0.3, η=0.01) | `env` |
 | Window | 30 × 4h баров (~5 дней) | `env.window` |
 | TX cost | 0.1% на Δallocation | `env.tx_cost` |
-| Embeddings dim | 768 → 64 (PCA on train) | `embeddings` |
-| Dedup threshold | cosine 0.85 | `news.dedup_threshold` |
+| Признаки | **41** = 8 инд + sentiment_mean + 32 emb | — |
+| Embeddings dim | 768 → **32** (PCA on train) | `embeddings` |
+| Аннуализация | **√2190** (4h бары) | `lib/metrics.py` |
 
 ---
 
@@ -116,51 +118,21 @@ Bootstrap 5000 реплик по seed-ам → 95% CI для Sharpe / total retu
 cd dsr_experiment
 PYTHONPATH=. ../venv/Scripts/python.exe build_data.py --build all
 ```
-После:
-```
-data/raw/{ohlcv,news}.parquet
-data/train/{features.parquet, compressor.pkl}
-data/oos/{oos_2024,oos_2025}_features.parquet
-```
 
 ### 2. Обучить + OOS
 ```bash
-PYTHONPATH=. ../venv/Scripts/python.exe run.py                    # полный пайплайн
-PYTHONPATH=. ../venv/Scripts/python.exe run.py --algo SAC          # только SAC
-PYTHONPATH=. ../venv/Scripts/python.exe run.py --skip-train        # OOS на уже обученных
-PYTHONPATH=. ../venv/Scripts/python.exe run.py --skip-train --oos oos_2025
-PYTHONPATH=. ../venv/Scripts/python.exe run.py --skip-oos          # только обучение
+PYTHONPATH=. ../venv/Scripts/python.exe run.py                          # DQN × seeds + OOS
+PYTHONPATH=. ../venv/Scripts/python.exe run.py --algo DQN --seeds 42 123 7 11 99
+PYTHONPATH=. ../venv/Scripts/python.exe run.py --skip-train             # OOS на уже обученных
 ```
-Результаты:
-```
-models/{SAC,PPO}/{algo}_seed{seed}_{ts}/model.zip (+ vecnormalize.pkl для PPO)
-results/oos_{period}.csv                 # по строке на (algo, seed)
-```
+Результаты: `models/DQN/{...}/model.zip`, `results/oos_{period}.csv`.
 
-### 3. Smoke-тест (несколько минут, CPU)
+### 3. Дашборд (живая демонстрация)
 ```bash
-PYTHONPATH=. ../venv/Scripts/python.exe build_data.py --config config.smoke.yaml --build all
-PYTHONPATH=. ../venv/Scripts/python.exe run.py --config config.smoke.yaml
+../venv/Scripts/streamlit run dashboard/app.py
 ```
-`config.smoke.yaml` сокращает train до полугода, один seed, 5k шагов, только SAC — для проверки, что всё собирается end-to-end.
-
----
-
-## Добавить новый OOS период
-
-В [config.yaml](config.yaml):
-```yaml
-periods:
-  oos_2026: { start: "2026-01-01", end: "2026-04-18" }
-
-experiment:
-  oos_periods: ["oos_2024", "oos_2025", "oos_2026"]
-```
-Затем:
-```bash
-PYTHONPATH=. ../venv/Scripts/python.exe build_data.py --build oos_2026
-PYTHONPATH=. ../venv/Scripts/python.exe run.py --skip-train --oos oos_2026
-```
+Показывает решение ансамбля DQN (5 сидов) BUY/HOLD/SELL на свежих новостях,
+валидацию на 2024/2025 и анализатор отдельной новости.
 
 ---
 
@@ -168,35 +140,33 @@ PYTHONPATH=. ../venv/Scripts/python.exe run.py --skip-train --oos oos_2026
 
 ```
 dsr_experiment/
-├── config.yaml              # все параметры эксперимента
-├── config.smoke.yaml        # быстрый end-to-end прогон
+├── config.yaml              # параметры эксперимента (DQN; терпимый загрузчик)
 ├── run.py                   # train × seeds + OOS
-├── build_data.py            # OHLCV + news → features
+├── build_data.py            # OHLCV + news → 41 фича
 ├── lib/
 │   ├── config_loader.py     # YAML → typed dataclass + validation
-│   ├── data_loader.py       # features parquet → (features, prices, sentiment)
-│   ├── env.py               # TradingEnv (basic / risk_adjusted / DSR + sentiment bonus)
-│   ├── train.py             # SB3 PPO / SAC с VecNormalize и LR-schedule
-│   ├── backtest.py          # deterministic rollout + VecNormalize loading
-│   ├── metrics.py           # Sharpe / Sortino / MaxDD / Calmar / total
+│   ├── data_loader.py       # parquet → (features, prices, sentiment_mean)
+│   ├── env.py               # TradingEnv (DSR reward + sentiment bonus)
+│   ├── train.py             # SB3 DQN / SAC
+│   ├── backtest.py          # deterministic rollout
+│   ├── metrics.py           # Sharpe/Sortino/MaxDD/Calmar/... (√2190)
 │   ├── bootstrap.py         # bootstrap CI по сидам
 │   └── features/
-│       ├── price.py         # ccxt OHLCV + 20+ индикаторов + z-score
-│       ├── news.py          # HF loader + 4h grouping + cosine dedup
+│       ├── price.py         # ccxt OHLCV + 8 минимальных индикаторов + z-score
+│       ├── news.py          # HF loader + 4h grouping
 │       ├── sentiment.py     # FinBERT pipeline
-│       ├── embeddings.py    # SentenceTransformer + PCA compressor
-│       └── lag.py           # add_lag_features / add_rolling_features
-├── data/                    # gitignored (raw + processed)
-├── models/                  # gitignored (обученные модели + VecNormalize)
-└── results/                 # gitignored (oos_{period}.csv)
+│       └── embeddings.py    # FinLang + PCA-компрессор (768→32)
+├── dashboard/               # Streamlit live-демо (читает снапшот из experiments/)
+├── vkr_defense/             # материалы защиты (walkthrough, фигуры)
+├── data/, models/, results/, experiments/   # gitignored (артефакты)
 ```
 
 ---
 
-## Роль в общем проекте
+## Главный результат (OOS, √2190, DQN × 5 сидов)
 
-Этот пакет — финализированная версия ключевого эксперимента:
-- vs. базовый пайплайн в [../src/](../src/) (3-way ablation по агентам 1/2/3/fusion), здесь оставлен **один** лучший feature set (price + sentiment-extremes + 64d PCA embeddings + лаги) и сосредоточено сравнение по **reward'у** (DSR + sentiment-bonus) и **алгоритму** (SAC vs PPO) с множественными seed'ами и OOS на нескольких годах;
-- используется финансовый эмбеддер `FinLang/finance-embeddings-investopedia` (768d) вместо универсального `all-MiniLM-L6-v2` из базового пайплайна;
-- 4h таймфрейм вместо дневного — больше обучающих шагов и более тонкая реакция на новости;
-- выходные `results/oos_*.csv` — агрегируются в ноутбуках/скриптах в `../notebooks/` и `../scripts/` для итоговых таблиц диплома.
+- **OOS 2025**: DQN Sharpe **1.41 ± 0.88** > Buy & Hold (~1.22), MaxDD **15.8%** vs 30.6%.
+- **OOS 2024** (бычий): DQN Sharpe 1.64 ± 0.26 (ниже BH по Sharpe, но просадка 23% vs 30%).
+
+Вывод — фазовая зависимость эффекта: на коррекции 2025 DQN с новостным фоном
+обыгрывает Buy & Hold и заметно снижает просадку.
