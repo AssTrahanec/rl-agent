@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT: Path = Path(__file__).resolve().parent.parent.parent
 SNAPSHOTS_DIR: Path = ROOT / "experiments"
-DEFAULT_SNAPSHOT: str = "run_2026-04-21_10seeds"
+DEFAULT_SNAPSHOT: str = "run_2026-06-01_minimal_dqn5"
 DATA_DIR: Path = ROOT / "data"
 TRAIN_COMPRESSOR: Path = DATA_DIR / "train" / "compressor.pkl"
 TRAIN_FEATURES: Path = DATA_DIR / "train" / "features.parquet"

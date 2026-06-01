@@ -10,6 +10,7 @@ from dashboard.utils import snapshot
 # Per-(snapshot, algo) labels where it matters (e.g. 10seeds has different
 # algo-specific tweaks). Fallback to SNAPSHOT_LABELS by snapshot alone.
 SNAPSHOT_ALGO_LABELS: dict[tuple[str, str], str] = {
+    ("run_2026-06-01_minimal_dqn5", "DQN"): "минимальные 41 фича, 5 сидов",
     ("run_2026-04-21_10seeds", "SAC"): "long-only, 10 seeds",
     ("run_2026-04-21_10seeds", "DQN"): "discrete all-in/out, tuned + 10 seeds",
 }
@@ -42,10 +43,11 @@ class ModelEntry:
 
 
 # Only these (snapshot, algo) pairs are exposed to the dashboard UI.
-# Validation page iterates more broadly via an internal helper.
+# The new minimal-feature DQN is the live model; the old 100-feature snapshot
+# is hidden (its models expect a 3001-dim obs and are incompatible with the
+# current 41-feature live builder). Validation page iterates more broadly.
 _VISIBLE_ENTRIES: set[tuple[str, str]] = {
-    ("run_2026-04-21_10seeds", "DQN"),
-    ("run_2026-04-21_10seeds", "SAC"),
+    ("run_2026-06-01_minimal_dqn5", "DQN"),
 }
 
 
