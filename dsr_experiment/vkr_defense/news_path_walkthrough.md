@@ -26,6 +26,7 @@
 - [Шаг 7. Сборка таблицы признаков (41 признак)](#шаг-7--сборка-таблицы-признаков)
 - [Шаг 8. Загрузка признаков в модель](#шаг-8--загрузка-признаков-в-модель--libdata_loaderpy)
 - [Шаг 9. Наблюдение и награда агента](#шаг-9--наблюдение-и-награда-агента--libenvpy)
+- [Где что сохраняется (карта артефактов)](#где-что-сохраняется-карта-артефактов)
 - [Почему нет утечки из будущего](#почему-нет-утечки-из-будущего)
 - [Дашборд](#дашборд--живая-демонстрация)
 - [Словарь терминов](#словарь-терминов)
@@ -445,6 +446,54 @@
 
 **Зачем sentiment-бонус.** Новости влияют на агента **дважды**: как вход (смысл + тональность
 в наблюдении) и как форма награды.
+
+---
+
+## Где что сохраняется (карта артефактов)
+
+На каждом шаге пути пишутся файлы. Все они **gitignored** (в репозиторий не коммитятся — только код).
+
+```
+HuggingFace: edaschau/bitcoin_news
+   │  ensure_raw_news() — качается один раз, потом кэш
+   ▼
+📄 data/raw/news.parquet            [текст, дата, заголовок], весь корпус 2020–2025
+   │  preprocess_news_4h → FinBERT → FinLang(768d) → PCA.fit (ТОЛЬКО на train)
+   ▼
+📄 data/train/compressor.pkl        обученный PCA 768→32 (матрица весов)
+   │  _attach_nlp_features_minimal:  sentiment_mean + emb_0..31; + 8 индикаторов из OHLCV
+   ▼
+📄 data/train/features.parquet           train: ~8760 строк × (41 фича + цены)
+📄 data/oos/oos_2024_features.parquet    \  то же на тестовых периодах
+📄 data/oos/oos_2025_features.parquet    /  (build_oos берёт ГОТОВЫЙ compressor.pkl)
+   │  run.py:  train_agent (обучение) → oos_phase (бэктест)
+   ▼
+📄 models/DQN/DQN_seed{S}_{ts}/model.zip   веса обученной DQN-сети (по сиду)
+📄 results/oos_{period}.csv                по строке на (алгоритм, сид): все метрики
+📄 results/oos_{period}_DQN_seed{S}.npz    daily_returns, allocations, equity_curve
+   │  промоут (копирование)
+   ▼
+📁 experiments/run_2026-06-01_minimal_dqn5/{models/DQN/, results/}   ← отсюда читает дашборд
+```
+
+Цены идут параллельно: `data/raw/ohlcv.parquet` (кэш свечей Binance) → 8 индикаторов → z-score →
+склеиваются с новостными фичами в тот же `features.parquet`.
+
+| Что | Файл | Что внутри | Кто пишет |
+|---|---|---|---|
+| Сырые новости | `data/raw/news.parquet` | text, date, title | `ensure_raw_news` |
+| Сырые цены | `data/raw/ohlcv.parquet` | OHLCV 4h | `ensure_raw_ohlcv` |
+| PCA-компрессор | `data/train/compressor.pkl` | PCA 768→32 | `build_train` → `EmbeddingCompressor.save` |
+| Train-фичи | `data/train/features.parquet` | 41 фича + `raw_close` | `build_train` |
+| OOS-фичи | `data/oos/oos_*_features.parquet` | то же, тестовые периоды | `build_oos` |
+| Модели | `models/DQN/DQN_seed{S}_{TS}/model.zip` | веса DQN-сети | `train_agent` → `model.save` |
+| Метрики | `results/oos_{period}.csv` | Sharpe/MaxDD/… по (algo, seed) | `oos_phase` |
+| Ряды по сидам | `results/oos_{period}_DQN_seed{S}.npz` | returns / alloc / equity | `oos_phase` → `np.savez` |
+| Снапшот дашборда | `experiments/run_2026-06-01_minimal_dqn5/` | копия моделей+результатов | промоут |
+
+> **Что НЕ сохраняется отдельно.** FinBERT-тональности и сырые 768d-эмбеддинги не кэшируются —
+> считаются на лету и пишутся в parquet уже **готовыми** (`sentiment_mean` + `emb_0..31`).
+> Промежуточные сырые векторы (768d × десятки тысяч окон = гигабайты) после сжатия не нужны.
 
 ---
 
