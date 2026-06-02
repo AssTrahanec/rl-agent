@@ -11,31 +11,97 @@
 
 ## 0. Конфигурация — `config.yaml`
 
-Все параметры эксперимента в одном файле; загружается в типизированные dataclass'ы
-через `lib/config_loader.py` (загрузчик **терпим** к устаревшим/лишним ключам — старые
-конфиги тоже грузятся).
+Все параметры эксперимента — в одном YAML; грузится в типизированные dataclass'ы через
+`lib/config_loader.py`. Загрузчик **терпим** к устаревшим/лишним ключам (старые конфиги тоже
+грузятся, лишнее отбрасывается). Разбор по секциям:
 
-| Секция | Ключи | Смысл |
-|---|---|---|
-| `data` | asset=`BTC/USDT`, timeframe=`4h`, пути к parquet/компрессору | Что и откуда брать |
-| `periods` | `train` 2020–2023, `oos_2024`, `oos_2025` | Train/test split по датам |
-| `news` | `hf_dataset: edaschau/bitcoin_news`, `dedup_threshold` | Источник новостного корпуса |
-| `embeddings` | `raw_dim: 768`, **`compressed_dim: 32`** | Размерности FinLang → PCA |
-| `sentiment` | `model_name: ProsusAI/finbert` | Модель тональности |
-| `features` | `normalize_window: 30` | Окно rolling z-score |
-| `env` | `window: 30`, `tx_cost: 0.001`, `sentiment_lambda: 0.3`, `action_space_type: discrete` | Параметры среды |
-| `experiment` | `seeds: [42,123,7,11,99]`, **`algos: ["DQN"]`**, `oos_periods` | Что запускать |
-| `agent_dqn` / `agent_sac` | гиперпараметры SB3 | 200k шагов, net_arch [128,128] |
+### 0.1. `data` — что и откуда брать
+```yaml
+data:
+  asset: "BTC/USDT"
+  timeframe: "4h"
+  paths:
+    raw_ohlcv:      "data/raw/ohlcv.parquet"
+    raw_news:       "data/raw/news.parquet"
+    train_features: "data/train/features.parquet"
+    compressor:     "data/train/compressor.pkl"
+    oos_dir:        "data/oos"
+```
+> Один актив (BTC/USDT), 4h-таймфрейм. Все пути к артефактам — здесь (см. «Карту артефактов»
+> в [`news_path_walkthrough.md`](news_path_walkthrough.md)).
 
-> **Почему `compressed_dim: 32`.** У новостей «эффективная размерность» мала — первые
-> компоненты PCA несут почти всю дисперсию. 32 хватает, а лишнее — шум. (Раньше было 64.)
+### 0.2. `periods` — train/test split
+```yaml
+periods:
+  train:    { start: "2020-01-01", end: "2023-12-31" }   # 4 года обучения
+  oos_2024: { start: "2024-01-01", end: "2024-12-31" }   # бычий рынок
+  oos_2025: { start: "2025-01-01", end: "2025-06-01" }   # коррекция
+```
+> Деление **по датам**, не случайное — иначе утечка будущего. Два OOS-периода с разными фазами
+> рынка → на защите можно показать **фазозависимость** эффекта.
 
-> **Почему награда — только DSR.** Раньше в `env` были `reward_type` (basic/risk_adjusted/dsr),
-> `allow_short`, `volatility_penalty`, `dsr_eta` — все эти ветки удалены. Осталась одна:
-> **DSR + sentiment-бонус**. `dsr_eta` теперь константа в коде (`_DSR_ETA = 0.01`).
+### 0.3. `news` — корпус новостей
+```yaml
+news:
+  hf_dataset: "edaschau/bitcoin_news"
+  dedup_threshold: 0.85
+```
+> Открытый датасет BTC-новостей с HuggingFace. (Поля `text_col`/`date_col` теперь захардкожены
+> в `news.py`; если остались в конфиге — игнорируются терпимым загрузчиком.)
 
-> **Почему `algos: ["DQN"]`.** PPO убран из кода целиком (был, но в финальный результат не
-> вошёл). Основной агент — DQN; SAC поддерживается, но переобучается отдельно.
+### 0.4. `embeddings` + `sentiment` — NLP-модели
+```yaml
+embeddings:
+  model_name: "FinLang/finance-embeddings-investopedia"
+  raw_dim: 768
+  compressed_dim: 32        # PCA 768 → 32
+sentiment:
+  model_name: "ProsusAI/finbert"
+```
+> **`compressed_dim: 32`** — у новостей эффективная размерность мала, 32 достаточно, лишнее —
+> шум (раньше было 64). FinLang — финансовый sentence-transformer (768d); FinBERT — тональность.
+
+### 0.5. `features` + `env` — фичи и торговая среда
+```yaml
+features:
+  normalize_window: 30
+env:
+  window: 30
+  tx_cost: 0.001
+  sentiment_lambda: 0.3
+  action_space_type: "discrete"   # discrete = DQN, continuous = SAC
+```
+> **Награда — только DSR + sentiment-бонус.** Раньше в `env` были `reward_type`
+> (basic/risk_adjusted/dsr), `allow_short`, `volatility_penalty`, `dsr_eta` — **все удалены**;
+> `dsr_eta` стал константой в коде (`_DSR_ETA = 0.01`). `sentiment_lambda = 0.3` — вес
+> sentiment-бонуса в награде; `tx_cost = 0.001` — комиссия 0.1% за смену позиции;
+> `window = 30` — окно наблюдения (~5 дней).
+
+### 0.6. `agent_dqn` / `agent_sac` — гиперпараметры RL
+```yaml
+agent_dqn:
+  device: "cuda"
+  total_timesteps: 200000
+  learning_rate: 1.0e-4
+  buffer_size: 300000
+  batch_size: 128
+  exploration_fraction: 0.2
+  net_arch: [128, 128]
+  activation_fn: "relu"
+```
+> DQN — **основной** агент (дискретные Hold/Buy/Sell). SAC — для сравнения (непрерывная доля).
+> **Секция `agent_ppo` удалена** — PPO больше не поддерживается. `net_arch=[128,128]` — MLP в два
+> слоя по 128 нейронов; `total_timesteps=200000` — длина обучения; `buffer_size` — replay-буфер.
+
+### 0.7. `experiment` — что запускать
+```yaml
+experiment:
+  seeds: [42, 123, 7, 11, 99]            # 5 сидов
+  algos: ["DQN"]
+  oos_periods: ["oos_2024", "oos_2025"]
+```
+> Обучаем **DQN на 5 сидах** (ансамбль), тестируем на обоих OOS-периодах. Несколько сидов —
+> чтобы видеть **типичное** поведение (RL шумный), а не один удачный/провальный прогон.
 
 ---
 
