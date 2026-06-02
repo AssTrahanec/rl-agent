@@ -168,6 +168,180 @@ run.py  (запуск скрипта)
 
 ---
 
+# Код ключевых функций (в порядке вызова)
+
+## A. Сборка данных
+
+**`build_data.py::main`** — диспетчер по `--build`:
+```python
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--config", default="config.yaml")
+    ap.add_argument("--build", required=True)        # 'train' | 'all' | oos-ключ
+    args = ap.parse_args()
+    cfg = load_config(args.config)
+    if args.build == "all":
+        build_train(cfg)
+        for k in cfg.experiment.oos_periods:
+            build_oos(cfg, k)
+```
+
+**`config_loader.py::load_config`** — YAML → типизированный `Config` (терпим к лишним ключам):
+```python
+def load_config(path):
+    with open(path) as f:
+        raw = yaml.safe_load(f)
+    cfg = Config(
+        data=DataConfig(asset=raw["data"]["asset"], timeframe=raw["data"]["timeframe"],
+                        paths=DataPaths(**_only_known(DataPaths, raw["data"]["paths"]))),
+        env=EnvConfig(**_only_known(EnvConfig, raw["env"])),
+        experiment=ExperimentConfig(**_only_known(ExperimentConfig, raw["experiment"])),
+        # ... остальные секции аналогично ...
+    )
+    _validate(cfg)              # train есть; algos ⊆ {SAC,DQN}; DQN⇒discrete; …
+    return cfg
+
+def _only_known(cls, d):        # отбрасывает устаревшие ключи (reward_type, agent_ppo…)
+    names = {f.name for f in fields(cls)}
+    return {k: v for k, v in d.items() if k in names}
+```
+
+**`build_data.py::build_train`** — оркестратор сборки train:
+```python
+def build_train(cfg):
+    ohlcv_full = ensure_raw_ohlcv(cfg)              # кэш свечей (ccxt/Binance)
+    news_full  = ensure_raw_news(cfg)               # кэш новостей (HF)
+    train = cfg.periods["train"]
+    ohlcv_train = _slice_by_period(ohlcv_full, train.start, train.end)
+    news_train  = _slice_by_period(news_full,  train.start, train.end)
+    baseline = _build_baseline(ohlcv_train, cfg.features.normalize_window)
+
+    # PCA обучается на ВСЕХ train-эмбеддингах:
+    news_4h = preprocess_news_4h(news_train)
+    st_model = _get_model()                                          # FinLang
+    all_texts = [t for _, row in news_4h.iterrows() for t in row["texts"]]
+    all_emb = st_model.encode(all_texts, batch_size=64).astype(np.float32)   # 768d на текст
+    compressor = EmbeddingCompressor(input_dim=768, output_dim=cfg.embeddings.compressed_dim)
+    compressor.fit(all_emb)
+    compressor.save(cfg.data.paths.compressor)                       # → 📄 compressor.pkl
+
+    features = _attach_nlp_features_minimal(baseline, news_train, cfg, compressor)
+    features.to_parquet(cfg.data.paths.train_features)              # → 📄 features.parquet
+```
+
+**`build_data.py::_build_baseline`** — 8 индикаторов + нормализация:
+```python
+def _build_baseline(ohlcv_slice, normalize_window):
+    df = add_technical_indicators_minimal(ohlcv_slice)              # 8 индикаторов
+    df["raw_close"] = df["close"].copy()                           # сырая цена для P&L
+    cols = [c for c in df.columns if c != "raw_close"]
+    df[cols] = rolling_zscore_normalize(df[cols], window=normalize_window)  # трейлинг z-score
+    return df
+```
+
+**`build_data.py::_attach_nlp_features_minimal`** — sentiment + эмбеддинг на каждое окно:
+```python
+for _, row in news_4h.iterrows():
+    ws, texts = row["date"], row["texts"]
+    if ws not in result.index: continue
+    scores = compute_sentiment_scores(texts)                       # FinBERT → [-1,+1]
+    result.loc[ws, "sentiment_mean"] = float(np.mean(scores))
+    raw_embs = st_model.encode(texts)                              # FinLang 768d
+    signed_w = np.array([s + np.sign(s)*0.1 if s != 0 else 0.1 for s in scores], dtype=np.float32)
+    signed_w = signed_w / np.abs(signed_w).sum()                   # веса по тональности
+    agg_emb = (raw_embs * signed_w[:, None]).sum(axis=0)           # взвешенное среднее 768d
+    compressed = compressor.transform(agg_emb.reshape(1, -1))[0]   # 768 → 32
+    result.loc[ws, emb_cols] = compressed                          # emb_0..emb_31
+```
+
+## B. Обучение и тест
+
+**`run.py::main`**:
+```python
+cfg = load_config(args.config)
+algos = [args.algo] if args.algo else cfg.experiment.algos          # ["DQN"]
+if args.seeds: cfg.experiment.seeds = list(args.seeds)              # [42,123,7,11,99]
+model_paths = train_phase(cfg, algos, ...)                          # обучить
+oos_phase(cfg, algos, model_paths, oos_keys, ...)                  # протестировать
+```
+
+**`run.py::train_phase`** + **`data_loader.py::load_train`**:
+```python
+def train_phase(cfg, algos, ...):
+    features, prices, sentiment = load_train(cfg)        # parquet → (41-фичная матрица, цены, sentiment)
+    for algo in algos:
+        for seed in cfg.experiment.seeds:
+            train_agent(cfg, algo, seed, features, prices, sentiment, ...)
+
+# что отдаёт load_train (data_loader._load_features_parquet):
+prices    = df["raw_close"].to_numpy(np.float64)         # реальные цены для P&L
+features  = df[все_колонки_кроме_цен].to_numpy(np.float32)   # 41 фича
+sentiment = df["sentiment_mean"].to_numpy(np.float32)   # отдельный сигнал для награды
+```
+
+**`lib/train.py::train_agent`** — строит среду и обучает DQN:
+```python
+def train_agent(cfg, algo, seed, features, prices, sentiment, models_dir="models"):
+    agent_cfg = cfg.agent_sac if algo == "SAC" else cfg.agent_dqn
+    env = _build_env(cfg, features, prices, sentiment)              # TradingEnv
+    vec_env = DummyVecEnv([lambda: env])
+    model = DQN("MlpPolicy", vec_env, learning_rate=lr, seed=seed,
+                policy_kwargs={"net_arch": [128,128], "activation_fn": ReLU},
+                **_algo_kwargs("DQN", agent_cfg))
+    model.learn(total_timesteps=200000, callback=ProgressCallback(200000))   # ← цикл обучения
+    model.save(...)                                                 # → 📄 model.zip
+    return model_path
+```
+
+**`lib/env.py::step`** — сердце среды (зовётся на КАЖДОМ шаге обучения и бэктеста):
+```python
+def step(self, action):
+    a = int(np.asarray(action).flatten()[0])                       # дискретное действие
+    allocation = 1.0 if a == 1 else 0.0 if a == 2 else self.prev_allocation
+    log_return = log(price_next / price_curr)
+    R_t = log_return * allocation - self.tx_cost * abs(Δallocation)
+    reward = self._compute_dsr(R_t)                                # DSR
+    if self.sentiment_signal is not None:
+        reward += self.sentiment_lambda * sentiment_t * log_return # sentiment-бонус (λ=0.3)
+    return self._get_obs(), reward, terminated, False, {"log_return": …, "allocation": …}
+```
+
+**`lib/env.py::_compute_dsr`** — дифференциальный Sharpe (Moody & Saffell):
+```python
+dA = R_t - self._dsr_A;  dB = R_t**2 - self._dsr_B
+denom = self._dsr_B - self._dsr_A**2
+reward = (self._dsr_B*dA - 0.5*self._dsr_A*dB) / denom**1.5       # при denom>0
+self._dsr_A += 0.01*dA;  self._dsr_B += 0.01*dB                   # η = 0.01
+```
+
+**`lib/env.py::_get_obs`** — наблюдение агента:
+```python
+window_obs = self.features[start:current_step].flatten()         # 30 × 41 = 1230
+return np.append(window_obs, self.prev_allocation)               # + доля → 1231
+```
+
+**`lib/backtest.py::run_backtest`** — детерминированный прогон обученной модели:
+```python
+env = TradingEnv(features, prices, window=30, tx_cost=0.001, action_space_type="discrete")
+model = load_model(model_path)                                   # DQN.load
+obs, _ = env.reset()
+while not done:
+    action, _ = model.predict(obs, deterministic=True)           # argmax по Q
+    obs, _, terminated, truncated, info = env.step(action)
+    step_returns.append(np.exp(info["log_return"] * info["allocation"]) - 1)
+return {"metrics": compute_metrics(step_returns, allocations), ...}
+```
+
+**`lib/metrics.py::compute_metrics`** — метрики из ряда по-барных доходностей:
+```python
+PERIODS_PER_YEAR_4H = 365 * 6                                    # 2190
+sharpe  = mean(r) / std(r)          * sqrt(2190)
+sortino = mean(r) / downside_std(r) * sqrt(2190)
+max_dd  = max(1 - cumprod(1+r) / np.maximum.accumulate(cumprod(1+r)))
+```
+
+---
+
 # Что в итоге появляется на диске
 
 | После входа A | После входа B |
